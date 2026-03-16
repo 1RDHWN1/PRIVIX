@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Privix</title>
+
+<style>
+
+body{
+  margin:0;
+  font-family:Arial;
+}
+
+.app{
+  display:flex;
+  height:100vh;
+}
+
+.servers{
+  width:80px;
+  background:#202225;
+  color:white;
+  padding:10px;
+}
+
+.channels{
+  width:200px;
+  background:#2f3136;
+  color:white;
+  padding:10px;
+}
+
+.status{
+  margin-top:10px;
+  font-size:12px;
+  opacity:0.9;
+}
+
+.status[data-state="ready"]{
+  color:#7CFC8A;
+}
+
+.chat{
+  flex:1;
+  background:#36393f;
+  color:white;
+  display:flex;
+  flex-direction:column;
+}
+
+.messages{
+  flex:1;
+  overflow:auto;
+  padding:10px;
+}
+
+.input{
+  padding:10px;
+  background:#40444b;
+}
+
+input{
+  width:80%;
+  padding:8px;
+}
+
+button{
+  padding:8px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="app">
+
+<div class="servers">
+<h4>Privix</h4>
+</div>
+
+<div class="channels">
+
+<h4>Channels</h4>
+
+<select id="channel">
+<option value="general"># general</option>
+<option value="coding"># coding</option>
+<option value="memes"># memes</option>
+</select>
+
+<hr>
+
+<label>Username</label>
+<input id="username" placeholder="username"/>
+<div id="connection-status" class="status" data-state="pending">Connecting...</div>
+
+</div>
+
+<div class="chat">
+
+<div class="messages" id="messages"></div>
+
+<div class="input">
+<input id="msg" placeholder="message"/>
+<button id="send-btn" type="button">Send</button>
+</div>
+
+</div>
+
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
