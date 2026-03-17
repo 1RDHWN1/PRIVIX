@@ -1,8 +1,5 @@
 node_modules/
 
-#dev files
-ROADMAP.md
-
 # Local environment
 .env
 .env.*
