@@ -16,7 +16,9 @@ import {
   renderMessage,
   setInvitePreview,
   setServerOptions,
-  setChannelOptions
+  setChannelOptions,
+  syncServerListSelection,
+  syncChannelListSelection
 } from "../ui.js"
 import { formatMuteRemaining } from "../utils.js"
 import { fetchMembersForServer } from "../api.js"
@@ -26,8 +28,9 @@ import {
   updateChannelActionState,
   clearRolePanels
 } from "../session.js"
-import { setMembers } from "../members.js"
+import { setMembers, setOnlineUsersForServer, clearOnlineUsersForServer, clearAllOnlineUsers } from "../members.js"
 import { sendTypingState, stopTypingStateTimer, resetTypingState } from "../typing.js"
+import { resetVoiceState } from "../voice.js"
 
 function notifyRemovedFromServer(serverName) {
   const safeServerName = String(serverName || "server")
@@ -102,6 +105,7 @@ function bindSocketHandlers() {
       fetchMembersForServer(serverId)
         .then((members) => setMembers(members))
         .catch(() => {})
+      updateChannelActionState()
     }
   })
 
@@ -109,6 +113,7 @@ function bindSocketHandlers() {
     if (!payload) return
     const serverId = Number(payload.server_id)
     if (!Number.isInteger(serverId) || serverId <= 0) return
+    clearOnlineUsersForServer(serverId)
 
     const removedServer = state.serversCache.find((item) => item.id === serverId)
     const removedServerName =
@@ -126,6 +131,7 @@ function bindSocketHandlers() {
       const stillMember = state.serversCache.some((item) => item.id === selectedServerId)
       if (stillMember) {
         serverSelect.value = String(selectedServerId)
+        syncServerListSelection()
       }
     }
 
@@ -151,6 +157,14 @@ function bindSocketHandlers() {
     notify(payload.message)
   })
 
+  socket.on("server online users", (payload) => {
+    if (!payload) return
+    const serverId = Number(payload.server_id)
+    if (!Number.isInteger(serverId) || serverId <= 0) return
+    const users = Array.isArray(payload.users) ? payload.users : []
+    setOnlineUsersForServer(serverId, users)
+  })
+
   socket.on("channel renamed", (payload) => {
     if (!payload) return
     const serverId = Number(payload.server_id)
@@ -172,6 +186,7 @@ function bindSocketHandlers() {
       updateChannelActionState()
       if (wasActive) {
         channelSelect.value = newChannel
+        syncChannelListSelection()
         localStorage.setItem(CHANNEL_KEY, newChannel)
         startSessionForSelectedChannel(false)
       }
@@ -185,22 +200,29 @@ function bindSocketHandlers() {
     startSessionForSelectedChannel(false)
   })
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", (reason) => {
     state.sessionRequestId += 1
     state.isSessionReady = false
     resetTypingState()
-    setStatus("Disconnected", false)
+    resetVoiceState()
+    clearAllOnlineUsers()
+    const label = reason ? `Disconnected (${reason})` : "Disconnected"
+    setStatus(label, false)
     clearRolePanels()
     permMemberView.checked = true
     permMemberSend.checked = true
     updateChannelActionState()
   })
 
-  socket.on("connect_error", () => {
+  socket.on("connect_error", (error) => {
     state.sessionRequestId += 1
     state.isSessionReady = false
     resetTypingState()
-    setStatus("Connection error", false)
+    resetVoiceState()
+    clearAllOnlineUsers()
+    const reason = error && (error.message || error.description || error.type)
+    const label = reason ? `Connection error (${reason})` : "Connection error"
+    setStatus(label, false)
     clearRolePanels()
     permMemberView.checked = true
     permMemberSend.checked = true

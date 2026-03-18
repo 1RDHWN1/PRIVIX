@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server/server.js",
+    "start:turn": "powershell -ExecutionPolicy Bypass -File ./scripts/start-with-turn.ps1",
     "dev": "node server/server.js",
     "test": "echo \"No automated tests yet\""
   },

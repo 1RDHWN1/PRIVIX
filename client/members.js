@@ -1,5 +1,11 @@
 export { configureMembers } from "./members/state.js"
-export { getFilteredMembers, setMembers } from "./members/data.js"
+export {
+  getFilteredMembers,
+  setMembers,
+  setOnlineUsersForServer,
+  clearOnlineUsersForServer,
+  clearAllOnlineUsers
+} from "./members/data.js"
 export {
   getMutedUntilTs,
   isMemberMuted,

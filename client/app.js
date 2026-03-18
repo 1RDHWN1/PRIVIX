@@ -18,6 +18,9 @@ import {
 import { configureMembers } from "./members.js"
 import { bindUiHandlers, bindSocketHandlers } from "./handlers.js"
 import { resetTypingState } from "./typing.js"
+import { bindVoiceSocketHandlers } from "./voice.js"
+import { initUsernamePortal } from "./usernamePortal.js"
+import { initMobileNav } from "./mobile.js"
 
 state.username = localStorage.getItem(USERNAME_KEY) || ""
 usernameInput.value = state.username
@@ -43,6 +46,9 @@ configureMembers({
 wireNoticeEvents()
 bindUiHandlers()
 bindSocketHandlers()
+bindVoiceSocketHandlers()
+initUsernamePortal()
+initMobileNav()
 
 updateChannelActionState()
 resetTypingState()

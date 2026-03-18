@@ -57,7 +57,7 @@ async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reason
     if (!targetOverride && muteReasonInput) {
       muteReasonInput.value = ""
     }
-    const members = await fetchMembersForServer(activeServer.id)
+    const members = await fetchMembersForServer(activeServer.id, { force: true })
     setMembers(members)
     const logs = await fetchAuditLogsForServer(activeServer.id)
     setAuditLogs(logs)

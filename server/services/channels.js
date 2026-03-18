@@ -4,6 +4,10 @@ function buildRoomKey(serverId, channelName) {
   return `s:${serverId}:c:${channelName}`
 }
 
+function buildVoiceRoomKey(serverId, channelName) {
+  return `s:${serverId}:v:${channelName}`
+}
+
 async function getChannelPermission(channelId, roleName) {
   return dbGet(
     `
@@ -18,5 +22,6 @@ async function getChannelPermission(channelId, roleName) {
 
 module.exports = {
   buildRoomKey,
+  buildVoiceRoomKey,
   getChannelPermission
 }

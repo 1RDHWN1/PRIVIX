@@ -2,22 +2,25 @@
 <html>
 <head>
 <title>Privix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <style>
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+
 :root{
-  --bg: #2d3442;
-  --bg-soft: #313949;
-  --bg-panel: #1f2530;
-  --bg-card: #2a3140;
-  --bg-input: #121723;
-  --line: #3f4b63;
-  --line-soft: #364055;
-  --text: #eef2f9;
-  --text-dim: #a7b3cb;
-  --accent: #58b0ff;
-  --accent-2: #7fd4ff;
-  --danger: #ff7878;
-  --success: #6ce98a;
+  --bg: #0c0d10;
+  --bg-soft: #121318;
+  --bg-panel: #15171d;
+  --bg-card: #1a1c24;
+  --bg-input: #12141a;
+  --line: #23262f;
+  --line-soft: #1b1e26;
+  --text: #f2f4f8;
+  --text-dim: #a6adbb;
+  --accent: #72d1ff;
+  --accent-2: #6ddc9b;
+  --danger: #ff6b7a;
+  --success: #5ce09b;
 }
 
 *{
@@ -26,10 +29,10 @@
 
 body{
   margin:0;
-  font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+  font-family:"Manrope", "Space Grotesk", sans-serif;
   background:
-    radial-gradient(circle at top right, rgba(127, 212, 255, 0.08), transparent 35%),
-    radial-gradient(circle at top left, rgba(88, 176, 255, 0.08), transparent 30%),
+    radial-gradient(circle at 10% 10%, rgba(100, 120, 255, 0.08), transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(120, 210, 255, 0.06), transparent 40%),
     var(--bg);
   color:var(--text);
 }
@@ -41,46 +44,328 @@ body{
 }
 
 .servers{
-  width:86px;
-  background:var(--bg-panel);
+  width:74px;
+  background:linear-gradient(180deg, #0f1014, #0c0d11);
   color:var(--text);
   padding:18px 10px;
   border-right:1px solid var(--line-soft);
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:flex-start;
+  position:relative;
+  overflow-y:auto;
+  min-height:0;
 }
 
 .servers h4{
   margin:0;
-  font-size:14px;
-  letter-spacing:0.08em;
+  font-size:12px;
+  letter-spacing:0.2em;
   text-transform:uppercase;
   text-align:center;
   color:var(--accent-2);
 }
 
+.server-list{
+  margin-top:18px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  width:100%;
+  align-items:center;
+}
+
+.server-item{
+  width:48px;
+  height:48px;
+  border-radius:18px;
+  background:#1a1c22;
+  border:1px solid rgba(255, 255, 255, 0.08);
+  display:grid;
+  place-items:center;
+  color:#e3e8f5;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:0.04em;
+  cursor:pointer;
+  transition:transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.server-item:hover{
+  transform:translateY(-1px);
+  border-color:rgba(125, 175, 255, 0.6);
+}
+
+.server-item.is-active{
+  background:linear-gradient(145deg, rgba(114, 209, 255, 0.6), rgba(90, 140, 255, 0.6));
+  border-color:rgba(140, 190, 255, 0.7);
+  color:#0b0f16;
+}
+
 .channels{
-  width:330px;
-  background:#262e3c;
+  width:280px;
+  background:linear-gradient(180deg, #111216, #0e0f14);
   color:var(--text);
-  padding:14px 12px;
+  padding:16px 14px 18px;
   border-right:1px solid var(--line-soft);
   overflow:auto;
+  min-height:0;
+}
+
+.channels-header{
+  padding:6px 6px 14px;
+  margin-bottom:10px;
+  border-bottom:1px solid rgba(255, 255, 255, 0.08);
+}
+
+.channels-title{
+  font-size:16px;
+  font-weight:700;
+  color:#f2f6ff;
+}
+
+.channels-subtitle{
+  font-size:11px;
+  color:var(--text-dim);
+  margin-top:4px;
 }
 
 .chat{
   flex:1;
-  background:var(--bg-soft);
+  background:
+    radial-gradient(circle at 60% 20%, rgba(120, 150, 255, 0.08), transparent 40%),
+    linear-gradient(180deg, #0b0c0f 0%, #0e1016 100%);
   color:var(--text);
   display:flex;
   flex-direction:column;
   min-width:0;
+  position:relative;
+  min-height:0;
+}
+
+.chat.is-voice .messages,
+.chat.is-voice .typing-indicator,
+.chat.is-voice .input{
+  display:none;
+}
+
+.chat.is-voice{
+  overflow-y:auto;
+}
+
+.chat.is-voice .voice-panel{
+  border-top:1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-header{
+  padding:14px 22px;
+  border-bottom:1px solid rgba(255, 255, 255, 0.06);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:rgba(12, 13, 17, 0.8);
+  backdrop-filter:blur(10px);
+}
+
+.mobile-back-btn{
+  display:none;
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  border:1px solid rgba(255, 255, 255, 0.12);
+  background:rgba(18, 20, 26, 0.85);
+  color:#dbe6ff;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  cursor:pointer;
+}
+
+.mobile-back-btn svg{
+  width:18px;
+  height:18px;
+}
+
+.chat-channel{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.chat-channel-name{
+  font-weight:600;
+  font-size:16px;
+}
+
+.chat-channel-type{
+  font-size:11px;
+  color:var(--text-dim);
+  padding:4px 10px;
+  border-radius:999px;
+  background:rgba(255, 255, 255, 0.06);
+  border:1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-header-actions{
+  display:flex;
+  gap:8px;
+}
+
+.icon-pill{
+  font-size:11px;
+  padding:6px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255, 255, 255, 0.08);
+  color:var(--text-dim);
+  background:rgba(18, 20, 26, 0.9);
 }
 
 .messages{
   flex:1;
   overflow-y:auto;
   overflow-x:hidden;
-  padding:16px 18px;
-  line-height:1.55;
+  padding:26px 28px;
+  line-height:1.6;
+}
+
+.voice-stage{
+  margin:22px;
+  padding:28px;
+  border-radius:22px;
+  background:linear-gradient(180deg, rgba(28, 28, 32, 0.95), rgba(24, 26, 32, 0.98));
+  border:1px solid rgba(255, 255, 255, 0.08);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+  text-align:center;
+  box-shadow:0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.voice-stage.is-collapsed{
+  display:none;
+}
+
+.voice-stage-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(120px, 1fr));
+  gap:14px;
+  width:min(520px, 100%);
+}
+
+.voice-tile{
+  height:110px;
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(36, 38, 46, 0.95), rgba(28, 30, 36, 0.95));
+  border:1px solid rgba(255, 255, 255, 0.08);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:8px;
+  color:#d6e5ff;
+  font-weight:600;
+  position:relative;
+  transition:transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.voice-tile.is-speaking{
+  transform:translateY(-2px);
+  box-shadow:0 0 18px rgba(110, 162, 255, 0.6);
+  border-color:rgba(140, 190, 255, 0.9);
+}
+
+.voice-tile.is-self{
+  border-color:rgba(130, 200, 255, 0.6);
+}
+
+.voice-tile.is-muted{
+  opacity:0.6;
+}
+
+.voice-avatar{
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  color:#f7f9ff;
+  font-weight:700;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+  background:rgba(255, 255, 255, 0.15);
+}
+
+.voice-avatar small{
+  font-size:10px;
+  color:rgba(255, 255, 255, 0.7);
+}
+
+.voice-name{
+  font-size:12px;
+  color:#cdd8f5;
+}
+
+.voice-mic{
+  position:absolute;
+  bottom:8px;
+  right:8px;
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:rgba(20, 26, 40, 0.85);
+  border:1px solid rgba(255, 255, 255, 0.15);
+  color:#cfe2ff;
+  transition:background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.voice-mic svg{
+  width:15px;
+  height:15px;
+  display:block;
+}
+
+.voice-mic .voice-mic-slash{
+  opacity:0;
+  transition:opacity 160ms ease;
+}
+
+.voice-tile.is-speaking .voice-mic{
+  background:rgba(110, 162, 255, 0.9);
+  border-color:rgba(140, 190, 255, 0.9);
+  color:#0b1222;
+}
+
+.voice-tile.is-muted .voice-mic{
+  background:rgba(255, 120, 120, 0.2);
+  border-color:rgba(255, 120, 120, 0.5);
+  color:#ffb3b3;
+}
+
+.voice-tile.is-muted .voice-mic .voice-mic-slash{
+  opacity:1;
+}
+
+.voice-stage-title{
+  font-size:28px;
+  font-weight:700;
+}
+
+.voice-stage-subtitle{
+  font-size:13px;
+  color:var(--text-dim);
+}
+
+.voice-join-hero{
+  background:#f2f4ff;
+  color:#0c1222;
+  border-color:rgba(255, 255, 255, 0.7);
+  padding:10px 18px;
+  border-radius:12px;
 }
 
 .messages-empty{
@@ -175,7 +460,7 @@ body{
 
 .typing-indicator{
   min-height:18px;
-  padding:0 14px 8px;
+  padding:0 20px 8px;
   font-size:12px;
   color:var(--text-dim);
   opacity:0;
@@ -188,29 +473,425 @@ body{
   transform:translateY(0);
 }
 
-.input{
-  padding:10px 12px;
-  background:#353d4d;
-  border-top:1px solid var(--line);
+.voice-panel{
+  border:1px solid rgba(255, 255, 255, 0.08);
+  padding:12px 16px 10px;
+  background:rgba(14, 15, 20, 0.9);
+  backdrop-filter:blur(10px);
+  max-height:none;
+  overflow:visible;
+  position:absolute;
+  left:50%;
+  bottom:16px;
+  transform:translateX(-50%);
+  width:min(640px, 92%);
+  z-index:8;
+  border-radius:16px;
+}
+
+.voice-panel-header{
   display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.voice-title{
+  font-size:11px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  color:#b9c8e8;
+}
+
+.voice-status{
+  font-size:12px;
+  color:var(--text-dim);
+}
+
+.voice-network-pill{
+  margin-top:4px;
+  width:max-content;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(160, 176, 205, 0.35);
+  background:rgba(40, 45, 58, 0.55);
+  color:#d6e3ff;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:0.01em;
+}
+
+.voice-network-pill.is-good{
+  color:#8ff0bd;
+  border-color:rgba(92, 224, 155, 0.52);
+  background:rgba(24, 64, 46, 0.58);
+}
+
+.voice-network-pill.is-fair{
+  color:#ffd27e;
+  border-color:rgba(255, 200, 110, 0.52);
+  background:rgba(73, 52, 17, 0.52);
+}
+
+.voice-network-pill.is-poor{
+  color:#ffacb7;
+  border-color:rgba(255, 122, 140, 0.52);
+  background:rgba(74, 27, 38, 0.52);
+}
+
+.voice-network-pill.is-idle{
+  color:#a7b0c2;
+  border-color:rgba(160, 176, 205, 0.3);
+  background:rgba(40, 45, 58, 0.35);
+}
+
+.voice-network-icon{
+  width:12px;
+  height:12px;
+  display:block;
+  color:currentColor;
+  opacity:0.95;
+}
+
+.voice-dock{
+  margin-top:10px;
+  padding:10px;
+  border-radius:14px;
+  background:linear-gradient(180deg, rgba(20, 24, 36, 0.96), rgba(16, 20, 30, 0.96));
+  border:1px solid rgba(255, 255, 255, 0.08);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.voice-dock-status{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
+.voice-dock-status-title{
+  font-size:12px;
+  font-weight:600;
+  color:#eaf2ff;
+}
+
+.voice-dock-controls{
+  display:flex;
+  align-items:center;
   gap:8px;
+  flex-wrap:wrap;
+}
+
+.voice-control-btn{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  width:60px;
+  height:54px;
+  border-radius:14px;
+  background:#1a1f2c;
+  border:1px solid rgba(255, 255, 255, 0.1);
+  color:#dbe6ff;
+  font-size:10px;
+  padding:6px;
+}
+
+.voice-control-btn .voice-control-icon{
+  width:20px;
+  height:20px;
+  display:block;
+  color:#dbe6ff;
+}
+
+.voice-control-btn.is-danger{
+  background:rgba(255, 84, 96, 0.22);
+  border-color:rgba(255, 84, 96, 0.45);
+  color:#ffe7ea;
+}
+
+.voice-control-btn.is-active{
+  box-shadow:0 0 0 2px rgba(110, 162, 255, 0.35);
+  border-color:rgba(110, 162, 255, 0.7);
+}
+
+.voice-control-btn.is-muted{
+  opacity:0.65;
+}
+
+.voice-control-label{
+  font-size:10px;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  color:rgba(255, 255, 255, 0.75);
+}
+
+.voice-roster{
+  margin-top:10px;
+  padding:8px 10px;
+  border:1px solid rgba(255, 255, 255, 0.08);
+  border-radius:10px;
+  background:#0f1420;
+  font-size:12px;
+  color:var(--text-dim);
+  max-height:110px;
+  overflow:auto;
+}
+
+.voice-quality{
+  margin-top:10px;
+  font-size:11px;
+  color:var(--text-dim);
+}
+
+.voice-panel .voice-roster{
+  display:none;
+}
+
+.voice-settings-toggle{
+  width:60px;
+  height:54px;
+  border-radius:14px;
+  background:#1a1f2c;
+  border:1px solid rgba(255, 255, 255, 0.12);
+  color:#dbe6fb;
+  font-size:10px;
+  padding:6px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+}
+
+.voice-settings-popover{
+  position:absolute;
+  right:18px;
+  bottom:78px;
+  display:none;
+  width:280px;
+  z-index:20;
+}
+
+.voice-settings-popover.is-open{
+  display:block;
+}
+
+.voice-settings-card{
+  background:linear-gradient(180deg, rgba(22, 26, 36, 0.98), rgba(20, 24, 34, 0.98));
+  border:1px solid rgba(255, 255, 255, 0.1);
+  border-radius:14px;
+  padding:10px;
+  box-shadow:0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.voice-settings-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px;
+  border-radius:12px;
+  background:rgba(19, 22, 32, 0.7);
+  border:1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom:8px;
+}
+
+.voice-settings-item:last-child{
+  margin-bottom:0;
+}
+
+.voice-settings-item.is-disabled{
+  opacity:0.55;
+}
+
+.voice-settings-meta{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
+.voice-settings-meta.is-full{
+  width:100%;
+}
+
+.voice-settings-title{
+  font-size:12px;
+  color:#f1f5ff;
+  font-weight:600;
+}
+
+.voice-settings-value{
+  font-size:11px;
+  color:var(--text-dim);
+}
+
+.voice-settings-select{
+  width:100%;
+  border:1px solid rgba(255, 255, 255, 0.1);
+  background:#0f1420;
+  color:#e9efff;
+  border-radius:8px;
+  padding:6px 8px;
+  font-size:11px;
+}
+
+.voice-settings-chevron{
+  color:rgba(255, 255, 255, 0.5);
+  font-size:16px;
+}
+
+.voice-slider{
+  width:100%;
+}
+
+.voice-slider input[type="range"]{
+  width:100%;
+  accent-color:#7da7ff;
+}
+
+.voice-slider-meter{
+  margin-top:8px;
+  display:grid;
+  grid-template-columns:repeat(18, 1fr);
+  gap:3px;
+  height:6px;
+}
+
+.voice-slider-meter span{
+  border-radius:999px;
+  background:rgba(124, 160, 255, 0.25);
+}
+
+.voice-settings-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.voice-settings-inline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.voice-ptt-key{
+  padding:2px 8px;
+  border-radius:8px;
+  border:1px solid rgba(255, 255, 255, 0.12);
+  background:rgba(13, 18, 29, 0.9);
+  font-size:11px;
+  color:#cfe2ff;
+}
+
+.voice-ptt-setkey{
+  font-size:11px;
+  padding:4px 8px;
+  border-radius:8px;
+  background:rgba(120, 150, 255, 0.15);
+  border-color:rgba(120, 150, 255, 0.3);
+  color:#dbe6ff;
+}
+
+.voice-switch{
+  position:relative;
+  width:38px;
+  height:22px;
+}
+
+.voice-switch input{
+  opacity:0;
+  width:0;
+  height:0;
+}
+
+.voice-switch span{
+  position:absolute;
+  inset:0;
+  background:rgba(255, 255, 255, 0.12);
+  border-radius:999px;
+  transition:background 180ms ease;
+}
+
+.voice-switch span::after{
+  content:"";
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:#d8e4ff;
+  transition:transform 180ms ease;
+}
+
+.voice-switch input:checked + span{
+  background:rgba(110, 162, 255, 0.8);
+}
+
+.voice-switch input:checked + span::after{
+  transform:translateX(16px);
+}
+
+.voice-roster strong{
+  color:#f4f8ff;
+  font-weight:600;
+}
+
+.voice-preferences{
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  color:var(--text-dim);
+}
+
+.voice-audio{
+  position:absolute;
+  width:0;
+  height:0;
+  overflow:hidden;
+  opacity:0;
+  pointer-events:none;
+}
+
+.input{
+  padding:12px 14px;
+  background:rgba(15, 18, 30, 0.95);
+  border-top:1px solid rgba(255, 255, 255, 0.08);
+  display:flex;
+  gap:10px;
   align-items:center;
 }
 
 .section{
-  border:1px solid var(--line-soft);
-  border-radius:12px;
-  padding:11px;
-  margin-bottom:10px;
-  background:var(--bg-card);
+  border:1px solid rgba(255, 255, 255, 0.06);
+  border-radius:14px;
+  padding:12px;
+  margin-bottom:12px;
+  background:rgba(18, 20, 26, 0.9);
 }
 
 .section h4{
   margin:0 0 10px;
-  font-size:13px;
-  letter-spacing:0.08em;
+  font-size:12px;
+  letter-spacing:0.2em;
   text-transform:uppercase;
-  color:#d5e8ff;
+  color:#cfe2ff;
+}
+
+.section.is-compact{
+  padding:10px;
 }
 
 .section label{
@@ -223,17 +904,25 @@ body{
 
 .field{
   width:100%;
-  border:1px solid var(--line);
+  border:1px solid rgba(255, 255, 255, 0.08);
   background:var(--bg-input);
   color:var(--text);
-  border-radius:9px;
-  padding:9px 10px;
+  border-radius:10px;
+  padding:9px 11px;
   outline:none;
+}
+
+.native-select{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+  height:0;
+  width:0;
 }
 
 .field:focus{
   border-color:var(--accent);
-  box-shadow:0 0 0 2px rgba(88, 176, 255, 0.22);
+  box-shadow:0 0 0 2px rgba(110, 162, 255, 0.2);
 }
 
 .field::placeholder{
@@ -248,13 +937,17 @@ body{
 .row{
   margin-top:8px;
   display:flex;
-  gap:6px;
+  gap:8px;
   flex-wrap:wrap;
 }
 
 .row .field{
   flex:1;
   min-width:0;
+}
+
+.row .channel-type{
+  max-width:120px;
 }
 
 .row.actions button{
@@ -302,6 +995,15 @@ body{
   pointer-events:none;
 }
 
+.voice-panel.collapsible-row{
+  max-height:none;
+  overflow:visible;
+}
+
+.voice-panel.collapsible-row.is-collapsed{
+  max-height:0;
+}
+
 .hint{
   display:block;
   margin-top:7px;
@@ -325,10 +1027,245 @@ body{
   font-size:13px;
   line-height:1.5;
   padding:8px;
-  border:1px solid var(--line);
-  border-radius:9px;
-  background:#1b2230;
+  border:1px solid rgba(255, 255, 255, 0.08);
+  border-radius:10px;
+  background:#111624;
   transition:opacity 160ms ease, transform 160ms ease, filter 160ms ease;
+}
+
+.channel-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.channel-group-title{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:0.16em;
+  color:var(--text-dim);
+  margin:6px 0 4px;
+}
+
+.channel-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 10px;
+  border-radius:10px;
+  cursor:pointer;
+  border:1px solid transparent;
+  background:transparent;
+  color:#d8e4ff;
+  font-size:14px;
+  transition:background 160ms ease, border-color 160ms ease;
+}
+
+.channel-item:hover{
+  background:rgba(255, 255, 255, 0.06);
+  border-color:rgba(255, 255, 255, 0.08);
+}
+
+.channel-item.is-active{
+  background:rgba(110, 160, 255, 0.2);
+  border-color:rgba(110, 160, 255, 0.45);
+  color:#f4f8ff;
+}
+
+.channel-prefix{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:16px;
+  height:16px;
+  flex-shrink:0;
+  font-weight:700;
+  color:var(--text-dim);
+  font-size:12px;
+}
+
+.channel-prefix.is-voice{
+  width:16px;
+  height:16px;
+  color:#8ea0b8;
+}
+
+.channel-prefix.is-voice svg{
+  width:16px;
+  height:16px;
+  display:block;
+  overflow:visible;
+}
+
+.channel-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.channel-badge{
+  margin-left:auto;
+  font-size:10px;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  border:1px solid rgba(255, 255, 255, 0.12);
+  padding:2px 6px;
+  border-radius:999px;
+}
+
+.channel-badge.is-hidden{
+  display:none;
+}
+
+.channel-item.is-voice-live{
+  background:rgba(92, 200, 132, 0.18);
+  border-color:rgba(92, 200, 132, 0.45);
+  color:#f3fff7;
+}
+
+.channel-item.is-voice-live .channel-prefix{
+  color:#73de9d;
+}
+
+.channel-voice-meta{
+  margin-left:auto;
+  font-size:12px;
+  font-weight:700;
+  color:#70e59f;
+  letter-spacing:0.03em;
+}
+
+.voice-channel-members{
+  margin:-2px 0 10px 30px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.voice-channel-member{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  padding:2px 0;
+}
+
+.voice-channel-member-avatar{
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  font-size:10px;
+  font-weight:700;
+  color:#f6fbff;
+  background:linear-gradient(135deg, #5291ff, #5fd2e4);
+  border:1px solid rgba(255, 255, 255, 0.2);
+}
+
+.voice-channel-member-name{
+  min-width:0;
+  max-width:130px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-size:12px;
+  color:#d9e6ff;
+  font-weight:600;
+}
+
+.voice-channel-member-role{
+  font-size:10px;
+  line-height:1;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+  color:#d9e3ff;
+  border:1px solid rgba(255, 255, 255, 0.16);
+  background:rgba(128, 143, 174, 0.24);
+  border-radius:999px;
+  padding:3px 6px;
+}
+
+.voice-channel-member-role[data-role="admin"]{
+  color:#ffcaca;
+  border-color:rgba(255, 122, 122, 0.45);
+  background:rgba(255, 122, 122, 0.2);
+}
+
+.voice-channel-member-role[data-role="moderator"]{
+  color:#d9e8ff;
+  border-color:rgba(123, 173, 255, 0.45);
+  background:rgba(123, 173, 255, 0.2);
+}
+
+.voice-channel-member-status{
+  margin-left:auto;
+  width:18px;
+  height:18px;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  color:#b7c0d0;
+  opacity:0;
+  transition:opacity 140ms ease;
+}
+
+.voice-channel-member-status svg{
+  width:18px;
+  height:18px;
+  display:block;
+}
+
+
+.voice-channel-member-meter{
+  display:inline-flex;
+  align-items:flex-end;
+  gap:2px;
+  width:14px;
+  height:12px;
+}
+
+.voice-channel-member-meter i{
+  width:3px;
+  height:4px;
+  border-radius:999px;
+  background:rgba(123, 226, 167, 0.45);
+  transform-origin:center bottom;
+}
+
+.voice-channel-member.is-muted .voice-channel-member-status{
+  display:inline-flex;
+  opacity:1;
+}
+
+.voice-channel-member.is-muted .voice-channel-member-meter i{
+  background:rgba(255, 122, 122, 0.35);
+  height:3px;
+}
+
+.voice-channel-member.is-speaking .voice-channel-member-meter i{
+  animation:voiceMemberPulse 780ms ease-in-out infinite;
+}
+
+.voice-channel-member.is-speaking .voice-channel-member-meter i:nth-child(2){
+  animation-delay:120ms;
+}
+
+.voice-channel-member.is-speaking .voice-channel-member-meter i:nth-child(3){
+  animation-delay:240ms;
+}
+
+@keyframes voiceMemberPulse{
+  0%, 100%{
+    height:4px;
+    opacity:0.6;
+  }
+  50%{
+    height:11px;
+    opacity:1;
+  }
 }
 
 .member-list.is-refreshing{
@@ -406,6 +1343,12 @@ body{
   border-color:rgba(120, 230, 180, 0.34);
 }
 
+.member-role[data-role="online"]{
+  background:rgba(92, 224, 155, 0.2);
+  border-color:rgba(92, 224, 155, 0.44);
+  color:#bff9dc;
+}
+
 .member-role[data-role="muted"]{
   background:rgba(255, 216, 135, 0.22);
   border-color:rgba(255, 216, 135, 0.4);
@@ -469,6 +1412,15 @@ body{
   font-size:12px;
 }
 
+.member-online-summary{
+  display:block;
+  margin-top:-4px;
+  margin-bottom:8px;
+  color:#89e6b8;
+  font-size:12px;
+  letter-spacing:0.02em;
+}
+
 .member-mute-config{
   align-items:stretch;
 }
@@ -523,11 +1475,11 @@ body{
 }
 
 button{
-  border:1px solid #60708d;
-  background:#dde5f1;
-  color:#101827;
-  border-radius:9px;
-  padding:8px 10px;
+  border:1px solid rgba(255, 255, 255, 0.12);
+  background:#202739;
+  color:#e9efff;
+  border-radius:10px;
+  padding:8px 12px;
   font-weight:600;
   cursor:pointer;
   transition:
@@ -566,28 +1518,29 @@ button.is-soft-hidden{
 #create-channel-btn,
 #join-invite-btn,
 #send-btn{
-  background:#77c8ff;
-  border-color:#6abcf6;
+  background:linear-gradient(135deg, #6ea2ff, #7fc7ff);
+  border-color:rgba(127, 199, 255, 0.6);
+  color:#0b1222;
 }
 
 #leave-server-btn,
 #delete-channel-btn,
 #kick-btn{
-  background:#ffd4d4;
-  border-color:#f2a7a7;
-  color:#4f1111;
+  background:rgba(255, 120, 120, 0.18);
+  border-color:rgba(255, 120, 120, 0.45);
+  color:#ffb9b9;
 }
 
 #mute-btn{
-  background:#ffeac5;
-  border-color:#efc377;
-  color:#4d3814;
+  background:rgba(255, 210, 135, 0.2);
+  border-color:rgba(255, 210, 135, 0.45);
+  color:#ffe4ba;
 }
 
 #unmute-btn{
-  background:#dbe9ff;
-  border-color:#9eb6d8;
-  color:#1c2e4d;
+  background:rgba(142, 196, 255, 0.2);
+  border-color:rgba(142, 196, 255, 0.5);
+  color:#cfe6ff;
 }
 
 .notice-backdrop{
@@ -648,15 +1601,72 @@ button.is-soft-hidden{
   display:none;
 }
 
+.username-portal{
+  position:fixed;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(8, 10, 14, 0.75);
+  backdrop-filter:blur(6px);
+  z-index:100;
+}
+
+.username-portal.show{
+  display:flex;
+}
+
+.username-portal-card{
+  width:min(420px, calc(100vw - 28px));
+  background:linear-gradient(180deg, rgba(20, 22, 28, 0.96), rgba(16, 18, 24, 0.96));
+  border:1px solid rgba(255, 255, 255, 0.1);
+  border-radius:16px;
+  padding:18px 18px 16px;
+  box-shadow:0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.username-portal-title{
+  font-size:18px;
+  font-weight:700;
+  margin:0 0 8px;
+}
+
+.username-portal-sub{
+  font-size:13px;
+  color:var(--text-dim);
+  margin:0 0 14px;
+  line-height:1.45;
+}
+
+.username-portal-row{
+  display:flex;
+  gap:8px;
+}
+
+.username-portal-error{
+  margin-top:10px;
+  font-size:12px;
+  color:#ff9ea8;
+  min-height:16px;
+}
+
+.username-portal-btn{
+  background:linear-gradient(135deg, #6ea2ff, #7fc7ff);
+  border-color:rgba(127, 199, 255, 0.6);
+  color:#0b1222;
+  font-weight:700;
+}
+
 @media (max-width: 1100px){
   .channels{
-    width:300px;
+    width:250px;
   }
 }
 
 @media (max-width: 900px){
   .servers{
-    display:none;
+    width:64px;
+    padding:14px 8px;
   }
   .channels{
     width:100%;
@@ -668,16 +1678,303 @@ button.is-soft-hidden{
   }
 }
 
-@media (max-width: 760px){
-  .app{
-    flex-direction:column;
-  }
+@media (max-width: 680px){
   .channels{
     width:100%;
     max-width:none;
-    max-height:46dvh;
+  }
+  .chat{
+    width:100%;
+  }
+  .member-actions{
+    opacity:1;
+    transform:none;
+  }
+}
+
+@media (max-width: 760px){
+  .app{
+    flex-direction:row;
+  }
+  .servers{
+    display:flex;
+    width:64px;
+    padding:14px 8px;
+    border-right:1px solid var(--line-soft);
+    align-items:center;
+    justify-content:flex-start;
+    overflow-y:auto;
+  }
+  .servers h4{
+    display:none;
+  }
+  .server-list{
+    margin-top:0;
+  }
+  .channels{
+    flex:1;
+    width:auto;
+    max-width:none;
+    max-height:none;
     border-right:none;
-    border-bottom:1px solid var(--line-soft);
+    border-bottom:none;
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:calc(26px + env(safe-area-inset-bottom));
+  }
+  .channels .section{
+    display:block;
+  }
+  .channels .row{
+    row-gap:8px;
+  }
+  .collapsible-section,
+  .collapsible-row{
+    max-height:none;
+    overflow:visible;
+  }
+  .chat{
+    display:none;
+    min-height:100dvh;
+  }
+  .app.is-mobile-chat .chat{
+    display:flex;
+  }
+  .app.is-mobile-chat .servers,
+  .app.is-mobile-chat .channels{
+    display:none;
+  }
+  .messages{
+    padding:18px 16px 20px;
+  }
+  .chat-header-actions{
+    display:none;
+  }
+  .mobile-back-btn{
+    display:inline-flex;
+  }
+  .channels-header{
+    position:sticky;
+    top:0;
+    z-index:5;
+    background:linear-gradient(180deg, #111216, #0f1015);
+  }
+  .chat-header{
+    padding:12px 16px;
+  }
+  .voice-stage{
+    margin:12px;
+    padding:14px;
+  }
+  .voice-stage-grid{
+    grid-template-columns:repeat(1, minmax(0, 1fr));
+    gap:10px;
+  }
+  .voice-stage-title{
+    font-size:22px;
+  }
+  .voice-stage-subtitle{
+    font-size:12px;
+  }
+  .voice-tile{
+    height:92px;
+    border-radius:16px;
+    gap:6px;
+  }
+  .voice-avatar{
+    width:44px;
+    height:44px;
+    font-size:14px;
+  }
+  .voice-name{
+    font-size:11px;
+  }
+  .voice-mic{
+    width:20px;
+    height:20px;
+  }
+  .voice-mic svg{
+    width:12px;
+    height:12px;
+  }
+  .voice-panel{
+    position:static;
+    transform:none;
+    width:auto;
+    margin:12px 14px 10px;
+  }
+  .voice-settings-popover{
+    position:static;
+    width:100%;
+    margin-top:10px;
+  }
+  .voice-dock{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .voice-dock-controls{
+    width:100%;
+    justify-content:space-between;
+  }
+  .voice-control-btn,
+  .voice-settings-toggle{
+    width:54px;
+    height:50px;
+  }
+  .voice-channel-members{
+    margin:0 0 8px 20px;
+    gap:4px;
+  }
+  .voice-channel-member{
+    gap:6px;
+  }
+  .voice-channel-member-avatar{
+    width:22px;
+    height:22px;
+    font-size:9px;
+  }
+  .voice-channel-member-name{
+    max-width:100px;
+    font-size:11px;
+  }
+  .voice-channel-member-role{
+    font-size:9px;
+    padding:2px 5px;
+  }
+  .voice-channel-member-status{
+    width:15px;
+    height:15px;
+  }
+  .voice-channel-member-status svg{
+    width:15px;
+    height:15px;
+  }
+  .voice-channel-member-meter{
+    width:12px;
+    height:10px;
+  }
+  .input{
+    padding:10px 12px;
+  }
+}
+
+@media (max-width: 520px){
+  .app{
+    flex-direction:row;
+  }
+  .servers{
+    width:58px;
+    padding:12px 6px;
+  }
+  .server-item{
+    width:44px;
+    height:44px;
+    border-radius:16px;
+  }
+  .channels{
+    padding:14px 12px;
+  }
+  .channels .row{
+    gap:8px;
+  }
+  .channels .row .field,
+  .channels .row button{
+    min-height:42px;
+  }
+  #row-channel-create .field,
+  #row-channel-create button,
+  #row-channel-manage button,
+  #row-channel-perm-send label,
+  #row-channel-perm-send button,
+  #row-member-role-main button,
+  #row-member-role-demote button,
+  #row-member-kick button,
+  #row-member-mute button{
+    flex:1 1 100%;
+    width:100%;
+  }
+  .member-online-summary{
+    font-size:11px;
+  }
+  .channel-list{
+    gap:6px;
+  }
+  .voice-channel-members{
+    margin:0 0 7px 14px;
+    gap:3px;
+  }
+  .voice-channel-member{
+    gap:5px;
+  }
+  .voice-channel-member-avatar{
+    width:20px;
+    height:20px;
+    font-size:8px;
+  }
+  .voice-channel-member-name{
+    max-width:78px;
+    font-size:10px;
+  }
+  .voice-channel-member-role{
+    display:none;
+  }
+  .voice-channel-member-status{
+    width:14px;
+    height:14px;
+  }
+  .voice-channel-member-status svg{
+    width:14px;
+    height:14px;
+  }
+  .voice-channel-member-meter{
+    width:10px;
+    height:9px;
+  }
+  .channel-prefix.is-voice,
+  .channel-prefix.is-voice svg{
+    width:12px;
+    height:12px;
+  }
+  .section{
+    padding:10px;
+  }
+  .voice-stage{
+    margin:10px;
+    padding:12px;
+  }
+  .voice-stage-grid{
+    grid-template-columns:repeat(1, minmax(0, 1fr));
+    gap:8px;
+  }
+  .voice-stage-title{
+    font-size:20px;
+  }
+  .voice-stage-subtitle{
+    font-size:11px;
+  }
+  .voice-tile{
+    height:84px;
+    border-radius:14px;
+  }
+  .voice-avatar{
+    width:40px;
+    height:40px;
+    font-size:12px;
+  }
+  .voice-name{
+    font-size:10px;
+  }
+  .voice-dock-controls{
+    gap:6px;
+  }
+  .voice-control-btn,
+  .voice-settings-toggle{
+    width:50px;
+    height:46px;
+  }
+  .messages{
+    padding:16px 14px;
   }
 }
 
@@ -701,14 +1998,20 @@ button.is-soft-hidden{
 
 <div class="servers">
 <h4>Privix</h4>
+<div id="server-list" class="server-list"></div>
 </div>
 
 <div class="channels">
 
+<div class="channels-header">
+  <div id="active-server-name" class="channels-title">No Server</div>
+  <div class="channels-subtitle">Community</div>
+</div>
+
 <div id="section-servers" class="section">
 <h4>Servers</h4>
 
-<select id="server-select" class="field"></select>
+<select id="server-select" class="field native-select"></select>
 <div id="row-server-manage" class="row">
   <input id="server-name" class="field" placeholder="new server name"/>
   <button id="create-server-btn" type="button">Create</button>
@@ -739,10 +2042,15 @@ button.is-soft-hidden{
 <div id="section-channels" class="section collapsible-section">
 <h4>Channels</h4>
 
-<select id="channel" class="field">
+<select id="channel" class="field native-select">
 </select>
+<div id="channel-list" class="channel-list"></div>
 <div id="row-channel-create" class="row collapsible-row">
   <input id="channel-name" class="field" placeholder="new-channel"/>
+  <select id="channel-type" class="field channel-type">
+    <option value="text" selected>Text</option>
+    <option value="voice">Voice</option>
+  </select>
   <button id="create-channel-btn" type="button">Create</button>
 </div>
 <div id="row-channel-manage" class="row collapsible-row">
@@ -770,6 +2078,7 @@ button.is-soft-hidden{
 
 <div id="section-members" class="section collapsible-section">
 <h4>Members</h4>
+<small id="member-online-summary" class="member-online-summary">Online 0/0</small>
 <div class="row">
   <input id="member-filter" class="field" placeholder="search member or role"/>
 </div>
@@ -825,8 +2134,155 @@ button.is-soft-hidden{
 
 <div class="chat">
 
+<div class="chat-header">
+  <button id="mobile-back-btn" class="mobile-back-btn" type="button" aria-label="Back">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M14.5 5l-7 7 7 7 1.5-1.5L10 12l6-5.5z"/>
+    </svg>
+  </button>
+  <div class="chat-channel">
+    <div id="active-channel-name" class="chat-channel-name"># channel</div>
+    <div id="active-channel-type" class="chat-channel-type">text</div>
+  </div>
+  <div class="chat-header-actions">
+    <div class="icon-pill">Members</div>
+    <div class="icon-pill">Voice</div>
+  </div>
+</div>
+
+<div id="voice-stage" class="voice-stage">
+  <div id="voice-stage-grid" class="voice-stage-grid"></div>
+  <div id="voice-stage-title" class="voice-stage-title">voice</div>
+  <div id="voice-stage-subtitle" class="voice-stage-subtitle">Belum ada yang join voice</div>
+  <button id="voice-join-hero" class="voice-join-hero" type="button">Join Voice</button>
+</div>
+
 <div class="messages" id="messages"></div>
 <div id="typing-indicator" class="typing-indicator" aria-live="polite"></div>
+<div id="voice-panel" class="voice-panel collapsible-row">
+  <div class="voice-panel-header">
+    <div class="voice-title">Voice Control</div>
+  </div>
+  <div class="voice-dock">
+    <div class="voice-dock-status">
+      <div class="voice-dock-status-title">Status</div>
+      <div id="voice-status" class="voice-status">Not connected</div>
+      <div id="voice-network-pill" class="voice-network-pill is-idle">
+        <svg class="voice-network-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M12 18a2 2 0 1 0 0 .001z"/>
+          <path fill="currentColor" d="M7.05 13.88a7 7 0 0 1 9.9 0 1 1 0 0 0 1.42-1.41 9 9 0 0 0-12.74 0 1 1 0 0 0 1.42 1.41z"/>
+          <path fill="currentColor" d="M3.51 10.34a12 12 0 0 1 16.98 0 1 1 0 1 0 1.41-1.41 14 14 0 0 0-19.8 0 1 1 0 0 0 1.41 1.41z"/>
+        </svg>
+        <span id="voice-network-latency">-- ms</span>
+      </div>
+    </div>
+    <div class="voice-dock-controls">
+      <button id="voice-join-btn" class="voice-control-btn" type="button">
+        <svg class="voice-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3z"/>
+          <path fill="currentColor" d="M5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V20h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.08A7 7 0 0 1 5 11z"/>
+        </svg>
+        <span class="voice-control-label">Join</span>
+      </button>
+      <button id="voice-mute-btn" class="voice-control-btn" type="button">
+        <svg class="voice-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3z"/>
+          <path fill="currentColor" d="M5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V20h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.08A7 7 0 0 1 5 11z"/>
+        </svg>
+        <span class="voice-control-label">Mute</span>
+      </button>
+      <button id="voice-settings-toggle" class="voice-settings-toggle" type="button">
+        <svg class="voice-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zm8.5 3.5a6.5 6.5 0 0 0-.07-.96l2.07-1.6-2-3.46-2.5 1a7.5 7.5 0 0 0-1.66-.96l-.38-2.64h-4l-.38 2.64c-.58.22-1.13.53-1.66.96l-2.5-1-2 3.46 2.07 1.6a6.5 6.5 0 0 0 0 1.92l-2.07 1.6 2 3.46 2.5-1c.53.43 1.08.74 1.66.96l.38 2.64h4l.38-2.64c.58-.22 1.13-.53 1.66-.96l2.5 1 2-3.46-2.07-1.6c.05-.32.07-.64.07-.96z"/>
+        </svg>
+        <span class="voice-control-label">Settings</span>
+      </button>
+      <button id="voice-leave-btn" class="voice-control-btn is-danger" type="button">
+        <svg class="voice-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M7 4h6a5 5 0 0 1 5 5v6a5 5 0 0 1-5 5H7v-2h6a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3H7V4z"/>
+          <path fill="currentColor" d="M9 8l-4 4 4 4v-3h6v-2H9V8z"/>
+        </svg>
+        <span class="voice-control-label">Leave</span>
+      </button>
+    </div>
+  </div>
+  <div id="voice-roster" class="voice-roster">Tidak ada peserta</div>
+  <div id="voice-quality" class="voice-quality">Quality: --</div>
+  <div id="voice-settings-popover" class="voice-settings-popover" aria-hidden="true">
+    <div class="voice-settings-card">
+      <div class="voice-settings-item">
+        <div class="voice-settings-meta">
+          <div class="voice-settings-title">Input Device</div>
+          <div class="voice-settings-value">
+            <select id="voice-input-device" class="voice-settings-select"></select>
+          </div>
+        </div>
+        <div class="voice-settings-chevron">&gt;</div>
+      </div>
+      <div id="voice-output-row" class="voice-settings-item">
+        <div class="voice-settings-meta">
+          <div class="voice-settings-title">Output Device</div>
+          <div class="voice-settings-value">
+            <select id="voice-output-device" class="voice-settings-select"></select>
+          </div>
+        </div>
+        <div class="voice-settings-chevron">&gt;</div>
+      </div>
+      <div class="voice-settings-item">
+        <div class="voice-settings-meta is-full">
+          <div class="voice-settings-title">Input Volume</div>
+          <div class="voice-settings-value">
+            <span id="voice-input-gain-value">100%</span>
+          </div>
+          <div class="voice-slider">
+            <input id="voice-input-gain" type="range" min="50" max="200" value="100"/>
+            <div class="voice-slider-meter">
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="voice-settings-item">
+        <div class="voice-settings-meta is-full">
+          <div class="voice-settings-title">Output Volume</div>
+          <div class="voice-settings-value">
+            <span id="voice-output-volume-value">80%</span>
+          </div>
+          <div class="voice-slider">
+            <input id="voice-output-volume" type="range" min="0" max="100" value="80"/>
+            <div class="voice-slider-meter">
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="voice-settings-item">
+        <div class="voice-settings-meta">
+          <div class="voice-settings-title">Push to Talk</div>
+          <div class="voice-settings-value">
+            Hold <span id="voice-ptt-key" class="voice-ptt-key">V</span> to talk
+          </div>
+        </div>
+        <div class="voice-settings-inline">
+          <button id="voice-ptt-setkey" class="voice-ptt-setkey" type="button">Set Key</button>
+          <label class="voice-switch">
+            <input id="voice-ptt-toggle" type="checkbox"/>
+            <span></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <label class="voice-preferences">
+    <input id="voice-auto-join" type="checkbox"/>
+    Auto-join voice
+  </label>
+</div>
+<div id="voice-audio" class="voice-audio" aria-hidden="true"></div>
 
 <div class="input">
 <input id="msg" class="field composer-input" placeholder="message"/>
@@ -847,8 +2303,28 @@ button.is-soft-hidden{
     </div>
   </div>
 </div>
+
+<div id="username-portal" class="username-portal" aria-hidden="true">
+  <div class="username-portal-card">
+    <h3 class="username-portal-title">Welcome to Privix</h3>
+    <p class="username-portal-sub">
+      Sebuah platform untuk komunikasi dari fchri (masih dalam pengembangan).<br>
+      Masukkan username untuk mulai chat dan join voice.
+    </p>
+    <div class="username-portal-row">
+      <input id="username-portal-input" class="field" placeholder="username"/>
+      <button id="username-portal-btn" class="username-portal-btn" type="button">Start</button>
+    </div>
+    <div id="username-portal-error" class="username-portal-error"></div>
+  </div>
+</div>
+
+<script src="/config.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script type="module" src="app.js"></script>
 
 </body>
 </html>
+
+
+

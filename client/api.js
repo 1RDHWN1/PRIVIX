@@ -1,7 +1,11 @@
 import { socket } from "./socket.js"
 
+const membersFetchInflight = new Map()
+const membersFetchCache = new Map()
+const MEMBERS_CACHE_TTL_MS = 800
+
 function emitWithTimeout(event, payload, options = {}) {
-  const timeoutMs = Number.isInteger(options.timeoutMs) ? options.timeoutMs : 2000
+  const timeoutMs = Number.isInteger(options.timeoutMs) ? options.timeoutMs : 6000
   const timeoutMessage = options.timeoutMessage || "Server tidak merespons"
   const failMessage = options.failMessage || "Gagal memproses request"
   const expectsOk = options.expectsOk !== false
@@ -28,15 +32,48 @@ function emitWithTimeout(event, payload, options = {}) {
   })
 }
 
-function fetchMembersForServer(serverId) {
-  return emitWithTimeout(
+function fetchMembersForServer(serverId, options = {}) {
+  const resolvedServerId = Number(serverId)
+  if (!Number.isInteger(resolvedServerId) || resolvedServerId <= 0) {
+    return Promise.resolve([])
+  }
+
+  const force = Boolean(options && options.force)
+  const now = Date.now()
+
+  if (!force) {
+    const cached = membersFetchCache.get(resolvedServerId)
+    if (cached && now - cached.ts <= MEMBERS_CACHE_TTL_MS) {
+      return Promise.resolve(Array.isArray(cached.members) ? [...cached.members] : [])
+    }
+
+    const inflight = membersFetchInflight.get(resolvedServerId)
+    if (inflight) {
+      return inflight.then((members) => (Array.isArray(members) ? [...members] : []))
+    }
+  }
+
+  const request = emitWithTimeout(
     "list server members",
-    { server_id: serverId },
+    { server_id: resolvedServerId },
     {
       timeoutMessage: "Server tidak merespons saat memuat member",
       failMessage: "Gagal memuat member"
     }
-  ).then((res) => res.members || [])
+  )
+    .then((res) => {
+      const members = Array.isArray(res && res.members) ? res.members : []
+      membersFetchCache.set(resolvedServerId, { ts: Date.now(), members })
+      return members
+    })
+    .finally(() => {
+      if (membersFetchInflight.get(resolvedServerId) === request) {
+        membersFetchInflight.delete(resolvedServerId)
+      }
+    })
+
+  membersFetchInflight.set(resolvedServerId, request)
+  return request.then((members) => (Array.isArray(members) ? [...members] : []))
 }
 
 function fetchAuditLogsForServer(serverId) {

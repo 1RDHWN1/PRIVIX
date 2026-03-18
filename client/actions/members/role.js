@@ -36,7 +36,7 @@ async function handleSetMemberRole(role, targetOverride = "") {
     )
 
     memberUsernameInput.value = targetOverride ? targetUsername : ""
-    const members = await fetchMembersForServer(activeServer.id)
+    const members = await fetchMembersForServer(activeServer.id, { force: true })
     setMembers(members)
     const logs = await fetchAuditLogsForServer(activeServer.id)
     setAuditLogs(logs)

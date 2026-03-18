@@ -1,9 +1,9 @@
 import { msgInput } from "../dom.js"
 import { state } from "../state.js"
 import { socket } from "../socket.js"
-import { MAX_MESSAGE_LENGTH } from "../constants.js"
+import { MAX_MESSAGE_LENGTH, CHANNEL_TYPE_VOICE } from "../constants.js"
 import { notify } from "../notice.js"
-import { startSessionForSelectedChannel } from "../session.js"
+import { startSessionForSelectedChannel, getActiveChannelInfo } from "../session.js"
 import { sendTypingState, stopTypingStateTimer } from "../typing.js"
 
 function send() {
@@ -16,6 +16,11 @@ function send() {
   if (!msg) return
   if (msg.length > MAX_MESSAGE_LENGTH) {
     notify(`Pesan maksimal ${MAX_MESSAGE_LENGTH} karakter`)
+    return
+  }
+  const channelInfo = getActiveChannelInfo()
+  if (channelInfo && channelInfo.type === CHANNEL_TYPE_VOICE) {
+    notify("Voice channel tidak menerima chat")
     return
   }
 

@@ -1,5 +1,10 @@
-import { channelNameInput } from "../../dom.js"
-import { CHANNEL_NAME_PATTERN, CHANNEL_KEY } from "../../constants.js"
+import { channelNameInput, channelTypeSelect } from "../../dom.js"
+import {
+  CHANNEL_NAME_PATTERN,
+  CHANNEL_KEY,
+  CHANNEL_TYPES,
+  CHANNEL_TYPE_TEXT
+} from "../../constants.js"
 import { notify, setStatus } from "../../notice.js"
 import { socket } from "../../socket.js"
 import { emitWithTimeout } from "../../api.js"
@@ -8,6 +13,8 @@ import { getActiveServer, startSessionForSelectedChannel } from "../../session.j
 async function handleCreateChannel() {
   const activeServer = getActiveServer()
   const channelName = channelNameInput.value.trim().toLowerCase()
+  const channelType = String(channelTypeSelect && channelTypeSelect.value).trim().toLowerCase()
+  const resolvedType = CHANNEL_TYPES.includes(channelType) ? channelType : CHANNEL_TYPE_TEXT
   if (!activeServer) {
     notify("Server belum tersedia")
     return
@@ -20,6 +27,10 @@ async function handleCreateChannel() {
     notify("Nama channel hanya boleh huruf kecil, angka, dan '-'")
     return
   }
+  if (!CHANNEL_TYPES.includes(resolvedType)) {
+    notify("Tipe channel tidak valid")
+    return
+  }
   if (!socket.connected) {
     notify("Server belum terhubung")
     return
@@ -29,7 +40,7 @@ async function handleCreateChannel() {
     setStatus("Creating channel...", false)
     const result = await emitWithTimeout(
       "create channel",
-      { server_id: activeServer.id, name: channelName },
+      { server_id: activeServer.id, name: channelName, type: resolvedType },
       {
         timeoutMessage: "Server tidak merespons saat create channel",
         failMessage: "Gagal membuat channel"

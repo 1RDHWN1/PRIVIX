@@ -5,6 +5,7 @@ const state = {
   sessionRequestId: 0,
   serversCache: [],
   membersCache: [],
+  onlineUsersByServer: new Map(),
   auditLogsCache: [],
   inviteShareUrl: "",
   pendingInviteCodeFromUrl: "",

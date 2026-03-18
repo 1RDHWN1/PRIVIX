@@ -55,7 +55,10 @@ async function loadChannelPermission(serverId, channelName) {
 
 async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady) {
   const requestId = ++state.sessionRequestId
-  const nextUsername = usernameInput.value.trim()
+  const nextUsername = String(usernameInput.value || state.username || "").trim()
+  if (nextUsername && usernameInput.value !== nextUsername) {
+    usernameInput.value = nextUsername
+  }
   resetTypingState({ notifyServer: true })
   setInvitePreview("")
   setStatus("Joining channel...", false)

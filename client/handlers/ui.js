@@ -1,6 +1,8 @@
 import {
   serverSelect,
+  serverList,
   channelSelect,
+  channelList,
   createChannelBtn,
   renameChannelBtn,
   deleteChannelBtn,
@@ -32,12 +34,21 @@ import {
   muteReasonInput,
   memberUsernameInput,
   usernameInput,
-  messages
+  messages,
+  voiceJoinBtn,
+  voiceLeaveBtn,
+  voiceMuteBtn,
+  voiceJoinHeroBtn
 } from "../dom.js"
 import { state } from "../state.js"
 import { SERVER_KEY, CHANNEL_KEY } from "../constants.js"
 import { notify } from "../notice.js"
-import { setInvitePreview, setChannelOptions } from "../ui.js"
+import {
+  setInvitePreview,
+  setChannelOptions,
+  syncServerListSelection,
+  syncChannelListSelection
+} from "../ui.js"
 import { hasServerPermission } from "../permissions.js"
 import {
   getActiveServer,
@@ -70,6 +81,7 @@ import {
   queueTypingStop,
   resetTypingState
 } from "../typing.js"
+import { joinVoiceChannel, leaveVoiceChannel, toggleVoiceMute } from "../voice.js"
 
 function bindUiHandlers() {
   serverSelect.addEventListener("change", () => {
@@ -77,6 +89,7 @@ function bindUiHandlers() {
     if (!activeServer) return
 
     localStorage.setItem(SERVER_KEY, String(activeServer.id))
+    syncServerListSelection()
     setInvitePreview("")
     updateChannelActionState()
     setChannelOptions(activeServer.channels || [])
@@ -90,11 +103,34 @@ function bindUiHandlers() {
 
   channelSelect.addEventListener("change", () => {
     localStorage.setItem(CHANNEL_KEY, channelSelect.value)
+    syncChannelListSelection()
     resetTypingState({ notifyServer: true })
     messages.innerHTML = ""
     updateChannelActionState()
     startSessionForSelectedChannel(true)
   })
+
+  if (serverList) {
+    serverList.addEventListener("click", (e) => {
+      const target = e.target.closest(".server-item")
+      if (!target) return
+      const serverId = target.dataset.serverId
+      if (!serverId || serverSelect.value === serverId) return
+      serverSelect.value = serverId
+      serverSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+  }
+
+  if (channelList) {
+    channelList.addEventListener("click", (e) => {
+      const target = e.target.closest(".channel-item")
+      if (!target) return
+      const channelName = target.dataset.channelName
+      if (!channelName || channelSelect.value === channelName) return
+      channelSelect.value = channelName
+      channelSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+  }
 
   createChannelBtn.addEventListener("click", (e) => {
     e.preventDefault()
@@ -311,6 +347,28 @@ function bindUiHandlers() {
       e.preventDefault()
       startSessionForSelectedChannel(true)
     }
+  })
+
+  voiceJoinBtn.addEventListener("click", (e) => {
+    e.preventDefault()
+    joinVoiceChannel()
+  })
+
+  if (voiceJoinHeroBtn) {
+    voiceJoinHeroBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      joinVoiceChannel()
+    })
+  }
+
+  voiceLeaveBtn.addEventListener("click", (e) => {
+    e.preventDefault()
+    leaveVoiceChannel({ notifyServer: true, markManual: true })
+  })
+
+  voiceMuteBtn.addEventListener("click", (e) => {
+    e.preventDefault()
+    toggleVoiceMute()
   })
 }
 

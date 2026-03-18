@@ -25,19 +25,119 @@ const {
   getMemberRoleInfo,
   ensureMemberRoleId
 } = require("./services/members")
-const { buildRoomKey, getChannelPermission } = require("./services/channels")
+const { buildRoomKey, buildVoiceRoomKey, getChannelPermission } = require("./services/channels")
 
 initDatabase()
 
 const app = express()
 app.use(cors())
+
+function parseEnvList(value) {
+  if (!value) return []
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function buildIceConfig() {
+  const rawJson = process.env.PRIVIX_ICE_JSON || process.env.ICE_SERVERS_JSON
+  if (rawJson) {
+    try {
+      const parsed = JSON.parse(rawJson)
+      if (Array.isArray(parsed)) {
+        return { iceServers: parsed }
+      }
+      if (parsed && typeof parsed === "object") {
+        if (Array.isArray(parsed.iceServers)) {
+          return parsed
+        }
+        if (parsed.urls) {
+          return { iceServers: [parsed] }
+        }
+      }
+    } catch (error) {
+      console.error("Invalid ICE_SERVERS_JSON:", error.message || error)
+    }
+  }
+
+  const turnUrls = parseEnvList(process.env.PRIVIX_TURN_URLS || process.env.TURN_URLS)
+  const turnUsername = process.env.PRIVIX_TURN_USERNAME || process.env.TURN_USERNAME
+  const turnCredential = process.env.PRIVIX_TURN_CREDENTIAL || process.env.TURN_CREDENTIAL
+  const iceTransportPolicy = process.env.PRIVIX_ICE_POLICY || process.env.ICE_POLICY
+
+  if (turnUrls.length === 0) {
+    return null
+  }
+
+  const server = { urls: turnUrls }
+  if (turnUsername) {
+    server.username = turnUsername
+  }
+  if (turnCredential) {
+    server.credential = turnCredential
+  }
+
+  const config = { iceServers: [server] }
+  if (iceTransportPolicy) {
+    config.iceTransportPolicy = iceTransportPolicy
+  }
+  return config
+}
+
+app.get("/config.js", (req, res) => {
+  const config = buildIceConfig()
+  res.set("Content-Type", "application/javascript; charset=utf-8")
+  if (!config) {
+    res.end("window.PRIVIX_ICE = null;")
+    return
+  }
+  res.end(`window.PRIVIX_ICE = ${JSON.stringify(config)};`)
+})
+
 app.use(express.static(path.join(__dirname, "..", "client")))
 
 const server = http.createServer(app)
 
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
+  pingInterval: 25000,
+  pingTimeout: 60000
 })
+
+function buildServerPresenceRoomKey(serverId) {
+  return `presence:server:${Number(serverId)}`
+}
+
+const voiceRoomStartedAtByKey = new Map()
+
+function inferVoiceRoomStartedAtFromPeers(peers) {
+  return (Array.isArray(peers) ? peers : []).reduce((minTs, peer) => {
+    const ts = Number(peer && peer.data && peer.data.voiceJoinedAtTs)
+    if (!Number.isFinite(ts) || ts <= 0) return minTs
+    if (minTs <= 0) return ts
+    return Math.min(minTs, ts)
+  }, 0)
+}
+
+function resolveVoiceRoomStartedAt(voiceRoomKey, peers) {
+  if (!voiceRoomKey) return 0
+  const list = Array.isArray(peers) ? peers : []
+  if (list.length === 0) {
+    voiceRoomStartedAtByKey.delete(voiceRoomKey)
+    return 0
+  }
+
+  const existingTs = Number(voiceRoomStartedAtByKey.get(voiceRoomKey) || 0)
+  if (Number.isFinite(existingTs) && existingTs > 0) {
+    return existingTs
+  }
+
+  const inferredTs = inferVoiceRoomStartedAtFromPeers(list)
+  const nextTs = inferredTs > 0 ? inferredTs : Date.now()
+  voiceRoomStartedAtByKey.set(voiceRoomKey, nextTs)
+  return nextTs
+}
 
 io.on("connection", (socket) => {
   console.log("user connected")
@@ -49,6 +149,40 @@ io.on("connection", (socket) => {
   socket.data.activeChannel = ""
   socket.data.joinVersion = 0
   socket.data.isTyping = false
+  socket.data.voiceRoomKey = ""
+  socket.data.voiceServerId = null
+  socket.data.voiceChannel = ""
+  socket.data.voiceMuted = false
+  socket.data.voiceJoinedAtTs = 0
+
+  async function emitServerOnlineUsers(serverId) {
+    const resolvedServerId = Number(serverId)
+    if (!Number.isInteger(resolvedServerId) || resolvedServerId <= 0) return
+
+    const presenceRoomKey = buildServerPresenceRoomKey(resolvedServerId)
+    const peers = await io.in(presenceRoomKey).fetchSockets()
+    const byUser = new Map()
+
+    peers.forEach((peer) => {
+      const username = normalizeText(peer.data.username)
+      if (!username) return
+      const userId = Number(peer.data.userId) || 0
+      const uniqueKey = userId > 0 ? `id:${userId}` : `name:${username.toLowerCase()}`
+      if (byUser.has(uniqueKey)) return
+      byUser.set(uniqueKey, {
+        user_id: userId > 0 ? userId : null,
+        username,
+        channel: normalizeText(peer.data.activeChannel).toLowerCase()
+      })
+    })
+
+    io.to(presenceRoomKey).emit("server online users", {
+      server_id: resolvedServerId,
+      users: Array.from(byUser.values()),
+      total: byUser.size,
+      updated_at: Date.now()
+    })
+  }
 
   function emitTypingIndicator(isTyping) {
     if (!socket.data.username || !socket.data.roomKey) return
@@ -67,6 +201,68 @@ io.on("connection", (socket) => {
     socket.data.isTyping = false
   }
 
+  function notifyVoiceLeave(roomKey) {
+    if (!roomKey) return
+    socket.to(roomKey).emit("voice user left", {
+      id: socket.id,
+      username: socket.data.username || ""
+    })
+  }
+
+  async function emitVoicePresenceUpdate(serverId, channelName) {
+    if (!serverId || !channelName) return
+    const voiceRoomKey = buildVoiceRoomKey(serverId, channelName)
+    const peers = await io.in(voiceRoomKey).fetchSockets()
+    const roomStartedAtTs = resolveVoiceRoomStartedAt(voiceRoomKey, peers)
+    const peerList = peers.map((peer) => ({
+      id: peer.id,
+      username: peer.data.username || "",
+      is_muted: Boolean(peer.data.voiceMuted)
+    }))
+    const presenceRoomKey = buildServerPresenceRoomKey(serverId)
+    io.to(presenceRoomKey).emit("voice presence update", {
+      server_id: serverId,
+      channel: channelName,
+      peers: peerList,
+      room_started_at_ts: roomStartedAtTs,
+      server_now_ts: Date.now()
+    })
+  }
+
+  async function emitAllVoicePresenceForServer(serverId) {
+    const resolvedServerId = Number(serverId)
+    if (!Number.isInteger(resolvedServerId) || resolvedServerId <= 0) return
+
+    const voiceChannels = await dbAll(
+      "SELECT name FROM channels WHERE server_id = ? AND type = 'voice' ORDER BY id ASC",
+      [resolvedServerId]
+    )
+    for (const row of voiceChannels) {
+      const channelName = normalizeText(row && row.name).toLowerCase()
+      if (!channelName) continue
+      await emitVoicePresenceUpdate(resolvedServerId, channelName)
+    }
+  }
+
+  async function leaveVoiceRoom({ notifyPeers = true } = {}) {
+    const roomKey = socket.data.voiceRoomKey
+    if (!roomKey) return
+    const serverId = socket.data.voiceServerId
+    const channelName = socket.data.voiceChannel
+    socket.leave(roomKey)
+    if (notifyPeers) {
+      notifyVoiceLeave(roomKey)
+    }
+    socket.data.voiceRoomKey = ""
+    socket.data.voiceServerId = null
+    socket.data.voiceChannel = ""
+    socket.data.voiceMuted = false
+    socket.data.voiceJoinedAtTs = 0
+    if (serverId && channelName) {
+      emitVoicePresenceUpdate(serverId, channelName).catch(() => {})
+    }
+  }
+
   socket.on("set username", async (rawUsername, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
@@ -79,6 +275,9 @@ io.on("connection", (socket) => {
       const user = await ensureUser(nextUsername)
       socket.data.username = user.username
       socket.data.userId = user.id
+      if (Number.isInteger(Number(socket.data.activeServerId)) && Number(socket.data.activeServerId) > 0) {
+        emitServerOnlineUsers(Number(socket.data.activeServerId)).catch(() => {})
+      }
       reply({ ok: true, username: user.username, user_id: user.id })
     } catch (error) {
       console.error("set username error:", error)
@@ -351,6 +550,7 @@ io.on("connection", (socket) => {
           if (s.data.roomKey) {
             s.leave(s.data.roomKey)
           }
+          s.leave(buildServerPresenceRoomKey(serverId))
           s.data.roomKey = ""
           s.data.activeServerId = null
           s.data.activeChannel = ""
@@ -362,6 +562,7 @@ io.on("connection", (socket) => {
           reason: "kicked"
         })
       }
+      emitServerOnlineUsers(serverId).catch(() => {})
 
       reply({
         ok: true,
@@ -782,10 +983,12 @@ io.on("connection", (socket) => {
           clearTypingIndicator()
           socket.leave(socket.data.roomKey)
         }
+        socket.leave(buildServerPresenceRoomKey(serverId))
         socket.data.roomKey = ""
         socket.data.activeServerId = null
         socket.data.activeChannel = ""
       }
+      emitServerOnlineUsers(serverId).catch(() => {})
 
       const remainingServers = await getMemberServers(socket.data.userId)
       const nextServerId = remainingServers.length > 0 ? remainingServers[0].id : null
@@ -889,6 +1092,7 @@ io.on("connection", (socket) => {
 
       const serverId = Number(payload && payload.server_id)
       const channelName = normalizeText(payload && payload.name).toLowerCase()
+      const channelType = normalizeText(payload && payload.type).toLowerCase() || "text"
       if (!Number.isInteger(serverId) || serverId <= 0) {
         reply({ ok: false, error: "Server tidak valid" })
         return
@@ -899,6 +1103,10 @@ io.on("connection", (socket) => {
       }
       if (!CHANNEL_NAME_PATTERN.test(channelName)) {
         reply({ ok: false, error: "Nama channel hanya boleh huruf kecil, angka, dan '-'" })
+        return
+      }
+      if (!["text", "voice"].includes(channelType)) {
+        reply({ ok: false, error: "Tipe channel tidak valid" })
         return
       }
 
@@ -913,13 +1121,17 @@ io.on("connection", (socket) => {
       }
 
       await dbRun(
-        "INSERT INTO channels (server_id, name, type) VALUES (?, ?, 'text')",
-        [serverId, channelName]
+        "INSERT INTO channels (server_id, name, type) VALUES (?, ?, ?)",
+        [serverId, channelName, channelType]
       )
       await writeAuditLog(serverId, socket.data.userId, "channel_created", {
-        channel: channelName
+        channel: channelName,
+        type: channelType
       })
-      reply({ ok: true, channel: { server_id: serverId, name: channelName, type: "text" } })
+      reply({
+        ok: true,
+        channel: { server_id: serverId, name: channelName, type: channelType }
+      })
     } catch (error) {
       if (error && String(error.message || "").includes("UNIQUE")) {
         reply({ ok: false, error: "Channel sudah ada di server ini" })
@@ -1369,6 +1581,275 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("voice join", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      if (!socket.data.userId || !socket.data.username) {
+        reply({ ok: false, error: "Set username dulu" })
+        return
+      }
+
+      const serverId = Number(payload && payload.server_id)
+      const channelName = normalizeText(payload && payload.channel).toLowerCase()
+      if (!Number.isInteger(serverId) || serverId <= 0) {
+        reply({ ok: false, error: "Server tidak valid" })
+        return
+      }
+      if (!isValidLength(channelName, MAX_CHANNEL_LENGTH)) {
+        reply({ ok: false, error: "Channel tidak valid" })
+        return
+      }
+
+      const member = await isServerMember(socket.data.userId, serverId)
+      if (!member) {
+        reply({ ok: false, error: "Kamu bukan member server ini" })
+        return
+      }
+
+      const channelRow = await dbGet(
+        "SELECT id, name, type FROM channels WHERE server_id = ? AND name = ? LIMIT 1",
+        [serverId, channelName]
+      )
+      if (!channelRow) {
+        reply({ ok: false, error: "Channel tidak ditemukan" })
+        return
+      }
+      if (String(channelRow.type || "text") !== "voice") {
+        reply({ ok: false, error: "Channel ini bukan voice channel" })
+        return
+      }
+
+      const roleInfo = await getMemberRoleInfo(socket.data.userId, serverId)
+      if (!roleInfo) {
+        reply({ ok: false, error: "Role member tidak ditemukan" })
+        return
+      }
+
+      if (roleInfo.priority < 100) {
+        const permission = await getChannelPermission(channelRow.id, roleInfo.roleName)
+        if (permission && Number(permission.can_view) !== 1) {
+          reply({ ok: false, error: "Kamu tidak punya akses masuk voice channel ini" })
+          return
+        }
+      }
+
+      let canSpeak = true
+      if (roleInfo.priority < 100) {
+        const permission = await getChannelPermission(channelRow.id, roleInfo.roleName)
+        if (permission && Number(permission.can_send) !== 1) {
+          canSpeak = false
+        }
+      }
+      const muteState = await getMemberMuteState(socket.data.userId, serverId)
+      if (muteState.isMuted) {
+        canSpeak = false
+      }
+
+      const voiceRoomKey = buildVoiceRoomKey(serverId, channelName)
+      if (socket.data.voiceRoomKey === voiceRoomKey) {
+        if (!Number(socket.data.voiceJoinedAtTs)) {
+          socket.data.voiceJoinedAtTs = Date.now()
+        }
+        socket.data.voiceMuted = Boolean(payload && payload.is_muted)
+        const peers = await io.in(voiceRoomKey).fetchSockets()
+        let roomStartedAtTs = resolveVoiceRoomStartedAt(voiceRoomKey, peers)
+        if (!roomStartedAtTs) {
+          roomStartedAtTs = Date.now()
+          voiceRoomStartedAtByKey.set(voiceRoomKey, roomStartedAtTs)
+        }
+        const peerList = peers
+          .filter((peer) => peer.id !== socket.id)
+          .map((peer) => ({
+            id: peer.id,
+            username: peer.data.username || "",
+            is_muted: Boolean(peer.data.voiceMuted)
+          }))
+
+        reply({
+          ok: true,
+          server_id: serverId,
+          channel: channelName,
+          peers: peerList,
+          can_speak: canSpeak,
+          room_started_at_ts: roomStartedAtTs,
+          server_now_ts: Date.now()
+        })
+        emitVoicePresenceUpdate(serverId, channelName).catch(() => {})
+        return
+      }
+      if (socket.data.voiceRoomKey && socket.data.voiceRoomKey !== voiceRoomKey) {
+        await leaveVoiceRoom({ notifyPeers: true })
+      }
+
+      socket.data.voiceMuted = Boolean(payload && payload.is_muted)
+      const peers = await io.in(voiceRoomKey).fetchSockets()
+      let roomStartedAtTs = resolveVoiceRoomStartedAt(voiceRoomKey, peers)
+      if (!roomStartedAtTs) {
+        roomStartedAtTs = Date.now()
+        voiceRoomStartedAtByKey.set(voiceRoomKey, roomStartedAtTs)
+      }
+      const peerList = peers
+        .filter((peer) => peer.id !== socket.id)
+        .map((peer) => ({
+          id: peer.id,
+          username: peer.data.username || "",
+          is_muted: Boolean(peer.data.voiceMuted)
+        }))
+
+      socket.join(voiceRoomKey)
+      socket.data.voiceRoomKey = voiceRoomKey
+      socket.data.voiceServerId = serverId
+      socket.data.voiceChannel = channelName
+      socket.data.voiceJoinedAtTs = Date.now()
+      const joinedRoomStartedAtTs = roomStartedAtTs
+
+      socket.to(voiceRoomKey).emit("voice user joined", {
+        id: socket.id,
+        username: socket.data.username || "",
+        is_muted: Boolean(socket.data.voiceMuted),
+        room_started_at_ts: joinedRoomStartedAtTs,
+        server_now_ts: Date.now()
+      })
+
+      emitVoicePresenceUpdate(serverId, channelName).catch(() => {})
+
+      reply({
+        ok: true,
+        server_id: serverId,
+        channel: channelName,
+        peers: peerList,
+        can_speak: canSpeak,
+        room_started_at_ts: joinedRoomStartedAtTs,
+        server_now_ts: Date.now()
+      })
+    } catch (error) {
+      console.error("voice join error:", error)
+      reply({ ok: false, error: "Gagal join voice channel" })
+    }
+  })
+
+  socket.on("voice presence", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      if (!socket.data.userId || !socket.data.username) {
+        reply({ ok: false, error: "Set username dulu" })
+        return
+      }
+
+      const serverId = Number(payload && payload.server_id)
+      const channelName = normalizeText(payload && payload.channel).toLowerCase()
+      if (!Number.isInteger(serverId) || serverId <= 0) {
+        reply({ ok: false, error: "Server tidak valid" })
+        return
+      }
+      if (!isValidLength(channelName, MAX_CHANNEL_LENGTH)) {
+        reply({ ok: false, error: "Channel tidak valid" })
+        return
+      }
+
+      const member = await isServerMember(socket.data.userId, serverId)
+      if (!member) {
+        reply({ ok: false, error: "Kamu bukan member server ini" })
+        return
+      }
+
+      const channelRow = await dbGet(
+        "SELECT id, name, type FROM channels WHERE server_id = ? AND name = ? LIMIT 1",
+        [serverId, channelName]
+      )
+      if (!channelRow) {
+        reply({ ok: false, error: "Channel tidak ditemukan" })
+        return
+      }
+      if (String(channelRow.type || "text") !== "voice") {
+        reply({ ok: false, error: "Channel ini bukan voice channel" })
+        return
+      }
+
+      const roleInfo = await getMemberRoleInfo(socket.data.userId, serverId)
+      if (!roleInfo) {
+        reply({ ok: false, error: "Role member tidak ditemukan" })
+        return
+      }
+
+      if (roleInfo.priority < 100) {
+        const permission = await getChannelPermission(channelRow.id, roleInfo.roleName)
+        if (permission && Number(permission.can_view) !== 1) {
+          reply({ ok: false, error: "Kamu tidak punya akses melihat channel ini" })
+          return
+        }
+      }
+
+      const voiceRoomKey = buildVoiceRoomKey(serverId, channelName)
+      const peers = await io.in(voiceRoomKey).fetchSockets()
+      const roomStartedAtTs = resolveVoiceRoomStartedAt(voiceRoomKey, peers)
+      const peerList = peers.map((peer) => ({
+        id: peer.id,
+        username: peer.data.username || "",
+        is_muted: Boolean(peer.data.voiceMuted)
+      }))
+
+      reply({
+        ok: true,
+        server_id: serverId,
+        channel: channelName,
+        peers: peerList,
+        room_started_at_ts: roomStartedAtTs,
+        server_now_ts: Date.now()
+      })
+    } catch (error) {
+      console.error("voice presence error:", error)
+      reply({ ok: false, error: "Gagal ambil data voice" })
+    }
+  })
+
+  socket.on("voice leave", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      await leaveVoiceRoom({ notifyPeers: true })
+      reply({ ok: true })
+    } catch (error) {
+      console.error("voice leave error:", error)
+      reply({ ok: false, error: "Gagal keluar voice channel" })
+    }
+  })
+
+  socket.on("voice signal", (payload) => {
+    try {
+      const targetId = payload && (payload.target_id || payload.targetId)
+      const data = payload && payload.data
+      if (!targetId || !data || !socket.data.voiceRoomKey) return
+
+      const targetSocket = io.sockets.sockets.get(targetId)
+      if (!targetSocket || targetSocket.data.voiceRoomKey !== socket.data.voiceRoomKey) {
+        return
+      }
+
+      targetSocket.emit("voice signal", {
+        from_id: socket.id,
+        data
+      })
+    } catch (error) {
+      console.error("voice signal error:", error)
+    }
+  })
+
+  socket.on("voice mute state", (payload) => {
+    try {
+      if (!socket.data.voiceRoomKey) return
+      socket.data.voiceMuted = Boolean(payload && payload.is_muted)
+      socket.to(socket.data.voiceRoomKey).emit("voice mute state", {
+        id: socket.id,
+        is_muted: Boolean(socket.data.voiceMuted)
+      })
+      if (socket.data.voiceServerId && socket.data.voiceChannel) {
+        emitVoicePresenceUpdate(socket.data.voiceServerId, socket.data.voiceChannel).catch(() => {})
+      }
+    } catch (error) {
+      console.error("voice mute state error:", error)
+    }
+  })
+
   socket.on("join server channel", async (payload, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
@@ -1419,12 +1900,17 @@ io.on("connection", (socket) => {
 
       const nextRoomKey = buildRoomKey(serverId, channelName)
       const previousRoom = socket.data.roomKey
+      const previousServerId = Number(socket.data.activeServerId)
       if (previousRoom) {
         clearTypingIndicator()
         socket.leave(previousRoom)
       }
+      if (Number.isInteger(previousServerId) && previousServerId > 0 && previousServerId !== serverId) {
+        socket.leave(buildServerPresenceRoomKey(previousServerId))
+      }
 
       socket.join(nextRoomKey)
+      socket.join(buildServerPresenceRoomKey(serverId))
       socket.data.roomKey = nextRoomKey
       socket.data.activeServerId = serverId
       socket.data.activeChannel = channelName
@@ -1447,6 +1933,11 @@ io.on("connection", (socket) => {
         channel: channelName,
         history: rows.reverse()
       })
+      if (Number.isInteger(previousServerId) && previousServerId > 0 && previousServerId !== serverId) {
+        emitServerOnlineUsers(previousServerId).catch(() => {})
+      }
+      emitServerOnlineUsers(serverId).catch(() => {})
+      emitAllVoicePresenceForServer(serverId).catch(() => {})
     } catch (error) {
       console.error("join server channel error:", error)
       reply({ ok: false, error: "Gagal masuk channel" })
@@ -1467,9 +1958,13 @@ io.on("connection", (socket) => {
         return
       }
       const roomKey = `legacy:${channelName}`
+      const previousServerId = Number(socket.data.activeServerId)
       if (socket.data.roomKey) {
         clearTypingIndicator()
         socket.leave(socket.data.roomKey)
+      }
+      if (Number.isInteger(previousServerId) && previousServerId > 0) {
+        socket.leave(buildServerPresenceRoomKey(previousServerId))
       }
       socket.join(roomKey)
       socket.data.roomKey = roomKey
@@ -1481,6 +1976,9 @@ io.on("connection", (socket) => {
         [roomKey]
       )
       reply({ ok: true, channel: channelName, history: rows.reverse() })
+      if (Number.isInteger(previousServerId) && previousServerId > 0) {
+        emitServerOnlineUsers(previousServerId).catch(() => {})
+      }
     } catch (error) {
       reply({ ok: false, error: "Gagal join channel" })
     }
@@ -1578,7 +2076,14 @@ io.on("connection", (socket) => {
   })
 
   socket.on("disconnect", () => {
+    const activeServerId = Number(socket.data.activeServerId)
     clearTypingIndicator()
+    leaveVoiceRoom({ notifyPeers: true }).catch(() => {})
+    if (Number.isInteger(activeServerId) && activeServerId > 0) {
+      setTimeout(() => {
+        emitServerOnlineUsers(activeServerId).catch(() => {})
+      }, 0)
+    }
     console.log("user disconnected")
   })
 })

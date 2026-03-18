@@ -3,6 +3,10 @@ import {
   sendBtn,
   serverSelect,
   channelSelect,
+  activeServerName,
+  activeChannelName,
+  activeChannelType,
+  chatRoot,
   sectionChannels,
   sectionMembers,
   sectionAudit,
@@ -49,13 +53,14 @@ import {
   noServerHint,
   invitePreview
 } from "../dom.js"
-import { SERVER_KEY, CHANNEL_KEY } from "../constants.js"
+import { SERVER_KEY, CHANNEL_KEY, CHANNEL_TYPE_VOICE } from "../constants.js"
 import { state } from "../state.js"
 import { setChannelOptions, setElementHidden, setSoftButtonHidden } from "../ui.js"
 import { hasServerPermission, canLeaveServer, isServerOwner } from "../permissions.js"
 import { getCurrentUserMuteInfo, refreshMuteButtonLabel } from "../members.js"
 import { formatMuteRemaining } from "../utils.js"
 import { socket } from "../socket.js"
+import { setVoiceContext } from "../voice.js"
 
 function getActiveServer() {
   const selected = Number(serverSelect.value)
@@ -98,11 +103,22 @@ function applySelectionFromStorage() {
   return true
 }
 
+function getActiveChannelInfo() {
+  const activeServer = getActiveServer()
+  if (!activeServer) return null
+  const channelName = channelSelect.value
+  if (!channelName) return null
+  const channels = Array.isArray(activeServer.channels) ? activeServer.channels : []
+  return channels.find((item) => item.name === channelName) || null
+}
+
 function updateChannelActionState() {
   const activeChannel = channelSelect.value
   const hasChannel = Boolean(activeChannel)
   const activeServer = getActiveServer()
   const hasServer = Boolean(activeServer)
+  const activeChannelInfo = getActiveChannelInfo()
+  const isVoiceChannel = activeChannelInfo && activeChannelInfo.type === CHANNEL_TYPE_VOICE
   const canManageRoles = hasServer && hasServerPermission("member.role.set", activeServer)
   const canMuteMembers = hasServer && hasServerPermission("member.mute", activeServer)
   const canKickMembers = hasServer && hasServerPermission("member.kick", activeServer)
@@ -181,7 +197,11 @@ function updateChannelActionState() {
   permMemberView.disabled = !socket.connected || !canSetChannelPerm
   permMemberSend.disabled = !socket.connected || !canSetChannelPerm
   const muteInfo = hasServer ? getCurrentUserMuteInfo() : { isMuted: false, mutedUntilTs: 0, muteReason: "" }
-  if (muteInfo.isMuted) {
+  if (isVoiceChannel) {
+    msgInput.disabled = true
+    sendBtn.disabled = true
+    msgInput.placeholder = "Voice channel"
+  } else if (muteInfo.isMuted) {
     const reasonText = muteInfo.muteReason ? ` (${muteInfo.muteReason})` : ""
     msgInput.disabled = true
     sendBtn.disabled = true
@@ -194,6 +214,37 @@ function updateChannelActionState() {
   if (noServerHint) {
     noServerHint.hidden = hasServer
   }
+
+  if (activeServerName) {
+    activeServerName.textContent = activeServer ? activeServer.name : "No Server"
+  }
+  if (activeChannelName) {
+    if (activeChannel) {
+      activeChannelName.textContent = isVoiceChannel ? `voice ${activeChannel}` : `# ${activeChannel}`
+    } else {
+      activeChannelName.textContent = "# channel"
+    }
+  }
+  if (activeChannelType) {
+    activeChannelType.textContent = isVoiceChannel ? "voice" : "text"
+  }
+  if (chatRoot) {
+    chatRoot.classList.toggle("is-voice", Boolean(isVoiceChannel))
+  }
+
+  const canSpeak =
+    hasServer &&
+    !muteInfo.isMuted &&
+    (hasServerPermission("channel.permission.set", activeServer) || permMemberSend.checked)
+
+  setVoiceContext({
+    isVoiceChannel,
+    serverId: activeServer ? activeServer.id : null,
+    channelName: activeChannel,
+    canSpeak,
+    isReady: state.isSessionReady,
+    isConnected: socket.connected
+  })
 }
 
-export { getActiveServer, applySelectionFromStorage, updateChannelActionState }
+export { getActiveServer, applySelectionFromStorage, getActiveChannelInfo, updateChannelActionState }

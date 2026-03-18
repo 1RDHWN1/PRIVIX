@@ -1,4 +1,4 @@
-import { memberList, memberFilterInput, memberUsernameInput } from "../dom.js"
+import { memberList, memberFilterInput, memberOnlineSummary, memberUsernameInput } from "../dom.js"
 import { state } from "../state.js"
 import { appendHighlightedText, formatMuteRemaining } from "../utils.js"
 import { hasServerPermission } from "../permissions.js"
@@ -15,6 +15,14 @@ function renderMembers(members) {
     .trim()
     .toLowerCase()
   const handlers = getMemberHandlers()
+  const totalMembers = Array.isArray(state.membersCache) ? state.membersCache.length : 0
+  const totalOnline = Array.isArray(state.membersCache)
+    ? state.membersCache.filter((item) => Boolean(item && item.is_online)).length
+    : 0
+
+  if (memberOnlineSummary) {
+    memberOnlineSummary.textContent = `Online ${totalOnline}/${totalMembers}`
+  }
 
   renderListWithTransition(memberList, (fragment) => {
     if (!Array.isArray(members) || members.length === 0) {
@@ -53,6 +61,13 @@ function renderMembers(members) {
       appendHighlightedText(roleTag, roleText, query)
 
       main.appendChild(name)
+      if (item && item.is_online) {
+        const onlineTag = document.createElement("span")
+        onlineTag.className = "member-role"
+        onlineTag.dataset.role = "online"
+        onlineTag.textContent = "online"
+        main.appendChild(onlineTag)
+      }
       main.appendChild(roleTag)
       if (isMuted) {
         const muteTag = document.createElement("span")

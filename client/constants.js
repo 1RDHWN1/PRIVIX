@@ -3,6 +3,9 @@ const SERVER_KEY = "privix_server_id"
 const CHANNEL_KEY = "privix_channel"
 const MAX_MESSAGE_LENGTH = 2000
 const CHANNEL_NAME_PATTERN = /^[a-z0-9-]+$/
+const CHANNEL_TYPE_TEXT = "text"
+const CHANNEL_TYPE_VOICE = "voice"
+const CHANNEL_TYPES = [CHANNEL_TYPE_TEXT, CHANNEL_TYPE_VOICE]
 const ROLE_PERMISSIONS = {
   admin: [
     "member.role.set",
@@ -35,5 +38,8 @@ export {
   CHANNEL_KEY,
   MAX_MESSAGE_LENGTH,
   CHANNEL_NAME_PATTERN,
+  CHANNEL_TYPE_TEXT,
+  CHANNEL_TYPE_VOICE,
+  CHANNEL_TYPES,
   ROLE_PERMISSIONS
 }

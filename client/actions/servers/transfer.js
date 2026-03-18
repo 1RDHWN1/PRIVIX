@@ -51,7 +51,7 @@ async function handleTransferOwner() {
       activeServer.owner_user_id = Number(result.new_owner_user_id)
     }
 
-    const members = await fetchMembersForServer(activeServer.id)
+    const members = await fetchMembersForServer(activeServer.id, { force: true })
     setMembers(members)
     const logs = await fetchAuditLogsForServer(activeServer.id)
     setAuditLogs(logs)

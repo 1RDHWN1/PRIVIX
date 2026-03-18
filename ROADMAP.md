@@ -4,6 +4,7 @@ Ringkasan progress saat ini:
 - Phase 1 selesai.
 - Phase 2 selesai.
 - Codebase client/server sudah direfactor agar modul lebih kecil dan logic tidak menumpuk di satu file.
+- Phase 3 (Voice Channel) sudah masuk tahap stabilisasi: realtime voice, presence, quality monitor, reconnect logic, push-to-talk, device settings, mobile UI, dan TURN config sudah berjalan.
 
 ## Phase 1 — Core Chat Engine (DONE)
 Fondasi aplikasi chat.
@@ -34,6 +35,29 @@ Fitur:
 
 Status: DONE
 
+## Phase 3 — Voice Channel
+Fitur paling kompleks.
+
+Teknologi:
+- WebRTC
+
+Fitur:
+- Voice channel (DONE)
+- Join/leave realtime + presence update untuk non-join viewer (DONE)
+- Mute/unmute + mute indicator terlihat oleh peserta lain (DONE)
+- Basic audio streaming (DONE)
+- Voice roster + voice stage UI + speaking indicator + notif join/leave (DONE)
+- Input/output device selection + volume controls (DONE)
+- Push-to-talk (DONE)
+- Stabilitas NAT/TURN readiness + env/script bootstrap (DONE)
+- Quality monitoring + reconnect logic (DONE)
+- Sinkronisasi timer sesi room voice (DONE)
+- Voice channel settings (PARTIAL, perapihan lanjutan UI/UX)
+- Mobile responsive untuk panel chat/voice/admin (PARTIAL, ongoing polishing)
+
+Target waktu: 2–3 minggu
+Status: IN PROGRESS (stabilization)
+
 ## Phase 4 — Private Messaging
 Mode seperti messenger.
 
@@ -43,20 +67,6 @@ Fitur:
 - Message encryption (opsional)
 
 Target waktu: 1 minggu
-Status: TODO
-
-## Phase 3 — Voice Chat
-Fitur paling kompleks.
-
-Teknologi:
-- WebRTC
-
-Fitur:
-- Voice channel
-- Mute/unmute
-- Basic audio streaming
-
-Target waktu: 2–3 minggu
 Status: TODO
 
 ## Phase 5 — Production Ready
