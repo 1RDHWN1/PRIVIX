@@ -6,15 +6,15 @@ import { setInvitePreview } from "../../ui.js"
 import { emitWithTimeout } from "../../api.js"
 import { startSessionForSelectedChannel, updateChannelActionState } from "../../session.js"
 
-async function handleCreateServer() {
-  const newServerName = serverNameInput.value.trim()
+async function handleCreateServer(nameOverride = "") {
+  const newServerName = String(nameOverride || serverNameInput.value || "").trim()
   if (!newServerName) {
     notify("Masukkan nama server dulu")
-    return
+    return false
   }
   if (!socket.connected) {
     notify("Server belum terhubung")
-    return
+    return false
   }
 
   try {
@@ -39,9 +39,11 @@ async function handleCreateServer() {
       updateChannelActionState()
     }
     notify("Server berhasil dibuat", "success")
+    return true
   } catch (error) {
     setStatus("Create server failed", false)
     notify(error.message || "Gagal membuat server", "error")
+    return false
   }
 }
 

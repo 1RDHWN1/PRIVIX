@@ -32,10 +32,15 @@ import { setMembers, setOnlineUsersForServer, clearOnlineUsersForServer, clearAl
 import { sendTypingState, stopTypingStateTimer, resetTypingState } from "../typing.js"
 import { resetVoiceState } from "../voice.js"
 
-function notifyRemovedFromServer(serverName) {
+function notifyRemovedFromServer(serverName, reason = "") {
   const safeServerName = String(serverName || "server")
-  notify(`Kamu dikeluarkan dari server "${safeServerName}"`, "error", {
-    title: "Removed From Server",
+  const normalizedReason = String(reason || "").toLowerCase()
+  const isDeleted = normalizedReason === "deleted"
+  const message = isDeleted
+    ? `Server "${safeServerName}" telah dihapus oleh owner.`
+    : `Kamu dikeluarkan dari server "${safeServerName}"`
+  notify(message, isDeleted ? "info" : "error", {
+    title: isDeleted ? "Server Deleted" : "Removed From Server",
     actionLabel: "Join Another Server",
     onAction: () => {
       focusInviteInput()
@@ -118,6 +123,7 @@ function bindSocketHandlers() {
     const removedServer = state.serversCache.find((item) => item.id === serverId)
     const removedServerName =
       String(payload.server_name || (removedServer && removedServer.name) || "server")
+    const removedReason = String(payload.reason || "")
 
     state.serversCache = state.serversCache.filter((item) => item.id !== serverId)
 
@@ -143,18 +149,18 @@ function bindSocketHandlers() {
       setInvitePreview("")
       messages.innerHTML = ""
       memberUsernameInput.value = ""
-      notifyRemovedFromServer(removedServerName)
+      notifyRemovedFromServer(removedServerName, removedReason)
       startSessionForSelectedChannel(false)
       return
     }
 
     updateChannelActionState()
-    notifyRemovedFromServer(removedServerName)
+    notifyRemovedFromServer(removedServerName, removedReason)
   })
 
   socket.on("system error", (payload) => {
     if (!payload || !payload.message) return
-    notify(payload.message)
+    notify(payload.message, "error")
   })
 
   socket.on("server online users", (payload) => {

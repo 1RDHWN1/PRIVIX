@@ -55,7 +55,9 @@ function applyPresence(peers, { notifyChanges = true } = {}) {
     const isMuted = isSelf ? !voiceState.canSpeak || voiceState.isMuted : Boolean(peer.is_muted)
     upsertParticipant(peer.id, peer.username || "Unknown", {
       isSelf,
-      isMuted
+      isMuted,
+      isCameraEnabled: Boolean(peer.is_camera_enabled),
+      isScreenSharing: Boolean(peer.is_screen_sharing)
     })
   })
   updateVoiceUi()

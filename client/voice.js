@@ -4,6 +4,10 @@ export {
   joinVoiceChannel,
   leaveVoiceChannel,
   toggleVoiceMute,
-  resetVoiceState,
-  setAutoJoinPreference
+  toggleVoiceCamera,
+  toggleVoiceScreenShare,
+  toggleVoiceCameraFacing,
+  setVoiceStageLayoutMode,
+  toggleVoiceStageLayoutMode,
+  resetVoiceState
 } from "./voice/index.js"

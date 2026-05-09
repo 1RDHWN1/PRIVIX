@@ -1,6 +1,6 @@
 import { memberUsernameInput, muteReasonInput, channelSelect } from "../../dom.js"
 import { socket } from "../../socket.js"
-import { notify, setStatus } from "../../notice.js"
+import { confirmNotice, notify, notifyError, setStatus } from "../../notice.js"
 import { buildConnectedStatus } from "../../permissions.js"
 import { emitWithTimeout, fetchMembersForServer, fetchAuditLogsForServer } from "../../api.js"
 import { getActiveServer } from "../../session.js"
@@ -36,6 +36,17 @@ async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reason
     return
   }
 
+  const confirmed = await confirmNotice(
+    `Mute "${targetUsername}" selama ${durationMinutes} menit di server "${activeServer.name}"?`,
+    {
+      title: "Mute Member",
+      confirmLabel: "Mute",
+      cancelLabel: "Batal",
+      type: "error"
+    }
+  )
+  if (!confirmed) return
+
   try {
     setStatus("Muting member...", false)
     const result = await emitWithTimeout(
@@ -68,7 +79,7 @@ async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reason
     )
   } catch (error) {
     setStatus("Mute member failed", false)
-    notify(error.message || "Gagal mute member", "error")
+    notifyError(error, "Gagal mute member")
   }
 }
 

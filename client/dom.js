@@ -3,6 +3,7 @@ const sendBtn = document.getElementById("send-btn")
 const serverSelect = document.getElementById("server-select")
 const serverList = document.getElementById("server-list")
 const activeServerName = document.getElementById("active-server-name")
+const activeServerSubtitle = document.querySelector(".channels-subtitle")
 const serverNameInput = document.getElementById("server-name")
 const createServerBtn = document.getElementById("create-server-btn")
 const renameServerBtn = document.getElementById("rename-server-btn")
@@ -75,6 +76,16 @@ const usernamePortal = document.getElementById("username-portal")
 const usernamePortalInput = document.getElementById("username-portal-input")
 const usernamePortalBtn = document.getElementById("username-portal-btn")
 const usernamePortalError = document.getElementById("username-portal-error")
+const createServerModal = document.getElementById("create-server-modal")
+const createServerDialogTitle = document.getElementById("create-server-dialog-title")
+const createServerDialogSubtitle = document.getElementById("create-server-dialog-subtitle")
+const createServerModalInput = document.getElementById("create-server-modal-input")
+const createServerModalCancelBtn = document.getElementById("create-server-modal-cancel")
+const createServerModalSubmitBtn = document.getElementById("create-server-modal-submit")
+const serverContextMenu = document.getElementById("server-context-menu")
+const serverContextMenuTitle = document.getElementById("server-context-menu-title")
+const serverContextMenuSubtitle = document.getElementById("server-context-menu-subtitle")
+const serverContextMenuItems = Array.from(document.querySelectorAll("[data-server-menu-action]"))
 const voicePanel = document.getElementById("voice-panel")
 const voiceStatus = document.getElementById("voice-status")
 const voiceNetworkPill = document.getElementById("voice-network-pill")
@@ -82,6 +93,10 @@ const voiceNetworkLatency = document.getElementById("voice-network-latency")
 const voiceJoinBtn = document.getElementById("voice-join-btn")
 const voiceLeaveBtn = document.getElementById("voice-leave-btn")
 const voiceMuteBtn = document.getElementById("voice-mute-btn")
+const voiceCameraBtn = document.getElementById("voice-camera-btn")
+const voiceScreenBtn = document.getElementById("voice-screen-btn")
+const voiceCameraFlipBtn = document.getElementById("voice-camera-flip-btn")
+const voiceLayoutBtn = document.getElementById("voice-layout-btn")
 const voiceStage = document.getElementById("voice-stage")
 const voiceStageGrid = document.getElementById("voice-stage-grid")
 const voiceStageTitle = document.getElementById("voice-stage-title")
@@ -91,8 +106,18 @@ const voiceRoster = document.getElementById("voice-roster")
 const voiceQuality = document.getElementById("voice-quality")
 const voiceSettingsToggleBtn = document.getElementById("voice-settings-toggle")
 const voiceSettingsPopover = document.getElementById("voice-settings-popover")
+const voiceSettingsSessionChip = document.getElementById("voice-settings-session-chip")
+const voiceSettingsCameraChip = document.getElementById("voice-settings-camera-chip")
+const voiceSettingsNetworkChip = document.getElementById("voice-settings-network-chip")
 const voiceInputDeviceSelect = document.getElementById("voice-input-device")
+const voiceInputDeviceHint = document.getElementById("voice-input-device-hint")
+const voiceCameraDeviceSelect = document.getElementById("voice-camera-device")
+const voiceCameraDeviceHint = document.getElementById("voice-camera-device-hint")
+const voiceVideoQualitySelect = document.getElementById("voice-video-quality")
+const voiceVideoQualityHint = document.getElementById("voice-video-quality-hint")
 const voiceOutputDeviceSelect = document.getElementById("voice-output-device")
+const voiceOutputDeviceHint = document.getElementById("voice-output-device-hint")
+const voiceCameraRow = document.getElementById("voice-camera-row")
 const voiceOutputRow = document.getElementById("voice-output-row")
 const voiceOutputVolumeSlider = document.getElementById("voice-output-volume")
 const voiceOutputVolumeValue = document.getElementById("voice-output-volume-value")
@@ -101,7 +126,6 @@ const voiceInputGainValue = document.getElementById("voice-input-gain-value")
 const voicePttToggle = document.getElementById("voice-ptt-toggle")
 const voicePttKeyLabel = document.getElementById("voice-ptt-key")
 const voicePttSetKeyBtn = document.getElementById("voice-ptt-setkey")
-const voiceAutoJoinToggle = document.getElementById("voice-auto-join")
 const voiceAudio = document.getElementById("voice-audio")
 
 export {
@@ -110,6 +134,7 @@ export {
   serverSelect,
   serverList,
   activeServerName,
+  activeServerSubtitle,
   serverNameInput,
   createServerBtn,
   renameServerBtn,
@@ -182,6 +207,16 @@ export {
   usernamePortalInput,
   usernamePortalBtn,
   usernamePortalError,
+  createServerModal,
+  createServerDialogTitle,
+  createServerDialogSubtitle,
+  createServerModalInput,
+  createServerModalCancelBtn,
+  createServerModalSubmitBtn,
+  serverContextMenu,
+  serverContextMenuTitle,
+  serverContextMenuSubtitle,
+  serverContextMenuItems,
   voicePanel,
   voiceStatus,
   voiceNetworkPill,
@@ -189,6 +224,10 @@ export {
   voiceJoinBtn,
   voiceLeaveBtn,
   voiceMuteBtn,
+  voiceCameraBtn,
+  voiceScreenBtn,
+  voiceCameraFlipBtn,
+  voiceLayoutBtn,
   voiceStage,
   voiceStageGrid,
   voiceStageTitle,
@@ -198,8 +237,18 @@ export {
   voiceQuality,
   voiceSettingsToggleBtn,
   voiceSettingsPopover,
+  voiceSettingsSessionChip,
+  voiceSettingsCameraChip,
+  voiceSettingsNetworkChip,
   voiceInputDeviceSelect,
+  voiceInputDeviceHint,
+  voiceCameraDeviceSelect,
+  voiceCameraDeviceHint,
+  voiceVideoQualitySelect,
+  voiceVideoQualityHint,
   voiceOutputDeviceSelect,
+  voiceOutputDeviceHint,
+  voiceCameraRow,
   voiceOutputRow,
   voiceOutputVolumeSlider,
   voiceOutputVolumeValue,
@@ -208,6 +257,5 @@ export {
   voicePttToggle,
   voicePttKeyLabel,
   voicePttSetKeyBtn,
-  voiceAutoJoinToggle,
   voiceAudio
 }

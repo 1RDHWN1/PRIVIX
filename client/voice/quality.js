@@ -1,6 +1,7 @@
 import { voiceState } from "./state.js"
 import { updateVoiceUi } from "./ui.js"
 import { schedulePeerReconnect } from "./rtc.js"
+import { syncAdaptiveCameraQuality } from "./settings.js"
 
 const QUALITY_INTERVAL_FAST_MS = 2500
 const QUALITY_INTERVAL_MEDIUM_MS = 4000
@@ -65,6 +66,21 @@ async function pollQuality() {
   if (!voiceState.isJoined) {
     return { level: "Unknown", peerCount: 0 }
   }
+
+  if (voiceState.voiceMode === "sfu") {
+    const peerCount = Math.max(0, voiceState.participants.size - 1)
+    const level = peerCount > 0 ? "Good" : "Solo"
+    voiceState.qualitySummary = {
+      level,
+      rttMs: 0,
+      jitterMs: 0,
+      lossPct: 0,
+      updatedAt: Date.now()
+    }
+    updateVoiceUi()
+    return { level, peerCount }
+  }
+
   const entries = []
 
   const tasks = []
@@ -86,6 +102,7 @@ async function pollQuality() {
       lossPct: 0,
       updatedAt: Date.now()
     }
+    syncAdaptiveCameraQuality(voiceState.qualitySummary).catch(() => {})
     updateVoiceUi()
     return { level: "Solo", peerCount: 0 }
   }
@@ -106,6 +123,7 @@ async function pollQuality() {
     ...summary,
     updatedAt: Date.now()
   }
+  syncAdaptiveCameraQuality(voiceState.qualitySummary).catch(() => {})
   updateVoiceUi()
   return { level: summary.level, peerCount: entries.length }
 }

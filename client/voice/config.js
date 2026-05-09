@@ -35,4 +35,36 @@ function resolveIceConfig() {
 
 const ICE_CONFIG = resolveIceConfig()
 
-export { DEFAULT_ICE_SERVERS, ICE_CONFIG }
+function resolveVoiceRuntimeConfig() {
+  const fromWindow =
+    (typeof window !== "undefined" && window.PRIVIX_VOICE_CONFIG && typeof window.PRIVIX_VOICE_CONFIG === "object")
+      ? window.PRIVIX_VOICE_CONFIG
+      : {}
+
+  const useSfu = Boolean(fromWindow.use_sfu)
+  const provider = String(fromWindow.sfu_provider || "mesh").trim().toLowerCase()
+  const wsUrl = String(fromWindow.sfu_ws_url || "").trim()
+  const clientSdkUrl = String(fromWindow.sfu_client_sdk_url || "").trim()
+
+  return {
+    useSfu,
+    provider: useSfu ? (provider || "livekit") : "mesh",
+    wsUrl,
+    clientSdkUrl
+  }
+}
+
+const VOICE_RUNTIME_CONFIG = resolveVoiceRuntimeConfig()
+const VOICE_USE_SFU = Boolean(VOICE_RUNTIME_CONFIG.useSfu)
+
+function isVoiceSfuEnabled() {
+  return VOICE_USE_SFU
+}
+
+export {
+  DEFAULT_ICE_SERVERS,
+  ICE_CONFIG,
+  VOICE_RUNTIME_CONFIG,
+  VOICE_USE_SFU,
+  isVoiceSfuEnabled
+}

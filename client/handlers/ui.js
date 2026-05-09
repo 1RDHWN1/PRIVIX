@@ -35,13 +35,25 @@ import {
   memberUsernameInput,
   usernameInput,
   messages,
-  voiceJoinBtn,
+  createServerModal,
+  createServerDialogTitle,
+  createServerDialogSubtitle,
+  createServerModalInput,
+  createServerModalCancelBtn,
+  createServerModalSubmitBtn,
+  serverContextMenu,
+  serverContextMenuTitle,
+  serverContextMenuSubtitle,
+  serverContextMenuItems,
   voiceLeaveBtn,
   voiceMuteBtn,
-  voiceJoinHeroBtn
+  voiceCameraBtn,
+  voiceScreenBtn,
+  voiceCameraFlipBtn,
+  voiceLayoutBtn
 } from "../dom.js"
 import { state } from "../state.js"
-import { SERVER_KEY, CHANNEL_KEY } from "../constants.js"
+import { SERVER_KEY, CHANNEL_KEY, CHANNEL_TYPE_VOICE } from "../constants.js"
 import { notify } from "../notice.js"
 import {
   setInvitePreview,
@@ -49,7 +61,7 @@ import {
   syncServerListSelection,
   syncChannelListSelection
 } from "../ui.js"
-import { hasServerPermission } from "../permissions.js"
+import { hasServerPermission, canLeaveServer, isServerOwner } from "../permissions.js"
 import {
   getActiveServer,
   startSessionForSelectedChannel,
@@ -62,6 +74,7 @@ import {
   handleDeleteChannel,
   handleJoinInvite,
   handleCreateServer,
+  handleDeleteServer,
   handleGetInvite,
   handleRegenInvite,
   handleRenameServer,
@@ -81,7 +94,264 @@ import {
   queueTypingStop,
   resetTypingState
 } from "../typing.js"
-import { joinVoiceChannel, leaveVoiceChannel, toggleVoiceMute } from "../voice.js"
+import {
+  joinVoiceChannel,
+  leaveVoiceChannel,
+  toggleVoiceMute,
+  toggleVoiceCamera,
+  toggleVoiceScreenShare,
+  toggleVoiceCameraFacing,
+  toggleVoiceStageLayoutMode
+} from "../voice.js"
+
+let serverPromptConfirmLabel = "Create Server"
+let serverPromptEmptyMessage = "Masukkan nama server dulu"
+let serverPromptSubmitHandler = null
+let serverPromptRestoreFocusTarget = null
+
+function isCreateServerModalOpen() {
+  return Boolean(createServerModal && createServerModal.classList.contains("show"))
+}
+
+function isServerContextMenuOpen() {
+  return Boolean(serverContextMenu && serverContextMenu.classList.contains("show"))
+}
+
+function setCreateServerModalBusy(isBusy) {
+  if (createServerModalInput) {
+    createServerModalInput.disabled = Boolean(isBusy)
+  }
+  if (createServerModalCancelBtn) {
+    createServerModalCancelBtn.disabled = Boolean(isBusy)
+  }
+  if (createServerModalSubmitBtn) {
+    createServerModalSubmitBtn.disabled = Boolean(isBusy)
+    createServerModalSubmitBtn.textContent = isBusy ? "Processing..." : serverPromptConfirmLabel
+  }
+}
+
+function closeCreateServerModal({ restoreFocus = true } = {}) {
+  if (!createServerModal) return
+  createServerModal.classList.remove("show")
+  createServerModal.setAttribute("aria-hidden", "true")
+  setCreateServerModalBusy(false)
+  if (createServerModalInput) {
+    createServerModalInput.value = ""
+  }
+  serverPromptSubmitHandler = null
+  if (restoreFocus) {
+    const target = serverPromptRestoreFocusTarget || createServerBtn
+    if (target && typeof target.focus === "function") {
+      target.focus()
+    }
+  }
+  serverPromptRestoreFocusTarget = null
+}
+
+function closeServerContextMenu() {
+  if (!serverContextMenu) return
+  serverContextMenu.classList.remove("show")
+  serverContextMenu.setAttribute("aria-hidden", "true")
+  serverContextMenu.style.left = "-9999px"
+  serverContextMenu.style.top = "-9999px"
+  delete serverContextMenu.dataset.serverId
+}
+
+function openServerPromptModal({
+  title,
+  subtitle,
+  placeholder,
+  confirmLabel,
+  initialValue = "",
+  emptyMessage = "Masukkan input dulu",
+  onSubmit,
+  restoreFocusEl = null
+}) {
+  if (!createServerModal || !createServerModalInput || typeof onSubmit !== "function") {
+    return
+  }
+
+  closeServerContextMenu()
+  serverPromptConfirmLabel = String(confirmLabel || "Confirm")
+  serverPromptEmptyMessage = String(emptyMessage || "Masukkan input dulu")
+  serverPromptSubmitHandler = onSubmit
+  serverPromptRestoreFocusTarget = restoreFocusEl
+  if (createServerDialogTitle) {
+    createServerDialogTitle.textContent = String(title || "Server Action")
+  }
+  if (createServerDialogSubtitle) {
+    createServerDialogSubtitle.textContent = String(subtitle || "")
+  }
+  createServerModalInput.placeholder = String(placeholder || "input")
+  createServerModalInput.value = String(initialValue || "")
+  setCreateServerModalBusy(false)
+  createServerModal.classList.add("show")
+  createServerModal.setAttribute("aria-hidden", "false")
+  window.requestAnimationFrame(() => {
+    createServerModalInput.focus()
+    createServerModalInput.select()
+  })
+}
+
+function openCreateServerModal() {
+  openServerPromptModal({
+    title: "Create Server",
+    subtitle: "Masukkan nama server baru. Channel awal general tetap akan dibuat otomatis.",
+    placeholder: "server name",
+    confirmLabel: "Create Server",
+    emptyMessage: "Masukkan nama server dulu",
+    onSubmit: (value) => handleCreateServer(value),
+    restoreFocusEl: createServerBtn
+  })
+}
+
+function openRenameServerModal() {
+  const activeServer = getActiveServer()
+  if (!activeServer) {
+    notify("Pilih server dulu")
+    return
+  }
+  if (!hasServerPermission("server.rename", activeServer)) {
+    notify("Kamu tidak punya izin rename server", "error")
+    return
+  }
+
+  openServerPromptModal({
+    title: "Rename Server",
+    subtitle: `Ubah nama server ${activeServer.name}.`,
+    placeholder: "new server name",
+    confirmLabel: "Save Rename",
+    initialValue: activeServer.name,
+    emptyMessage: "Masukkan nama server baru dulu",
+    onSubmit: (value) => handleRenameServer(value)
+  })
+}
+
+function openTransferOwnerModal() {
+  const activeServer = getActiveServer()
+  if (!activeServer) {
+    notify("Pilih server dulu")
+    return
+  }
+  const canTransferOwner =
+    hasServerPermission("server.owner.transfer", activeServer) && isServerOwner(activeServer)
+  if (!canTransferOwner) {
+    notify("Kamu tidak punya izin transfer owner", "error")
+    return
+  }
+
+  openServerPromptModal({
+    title: "Transfer Owner",
+    subtitle: `Pindahkan owner server ${activeServer.name} ke username lain.`,
+    placeholder: "new owner username",
+    confirmLabel: "Transfer Owner",
+    emptyMessage: "Masukkan username owner baru dulu",
+    onSubmit: (value) => handleTransferOwner(value)
+  })
+}
+
+async function submitCreateServerModal() {
+  if (!createServerModalInput || typeof serverPromptSubmitHandler !== "function") return
+
+  const value = createServerModalInput.value.trim()
+  if (!value) {
+    notify(serverPromptEmptyMessage)
+    createServerModalInput.focus()
+    return
+  }
+
+  setCreateServerModalBusy(true)
+  const completed = await serverPromptSubmitHandler(value)
+  if (completed) {
+    closeCreateServerModal()
+    return
+  }
+  setCreateServerModalBusy(false)
+  createServerModalInput.focus()
+}
+
+function getServerById(serverId) {
+  const targetId = Number(serverId)
+  if (!Number.isInteger(targetId) || targetId <= 0) return null
+  return state.serversCache.find((item) => item.id === targetId) || null
+}
+
+function selectServerById(serverId) {
+  const nextId = String(serverId || "")
+  if (!nextId) return
+  if (serverSelect.value === nextId) return
+  serverSelect.value = nextId
+  serverSelect.dispatchEvent(new Event("change", { bubbles: true }))
+}
+
+function setServerContextMenuItemHidden(actionName, isHidden) {
+  if (!Array.isArray(serverContextMenuItems)) return
+  const target = serverContextMenuItems.find((item) => item.dataset.serverMenuAction === actionName)
+  if (!target) return
+  target.hidden = Boolean(isHidden)
+}
+
+function openServerContextMenu(serverId, x, y) {
+  if (!serverContextMenu) return
+  selectServerById(serverId)
+  const activeServer = getServerById(serverId) || getActiveServer()
+  if (!activeServer) return
+
+  const canRenameServer = hasServerPermission("server.rename", activeServer)
+  const canTransferOwner =
+    hasServerPermission("server.owner.transfer", activeServer) && isServerOwner(activeServer)
+  const canGetInvite = hasServerPermission("invite.get", activeServer)
+  const canRegenInvite = hasServerPermission("invite.regenerate", activeServer)
+  const canLeaveActiveServer = canLeaveServer(activeServer)
+  const canDeleteServer = isServerOwner(activeServer)
+
+  if (serverContextMenuTitle) {
+    serverContextMenuTitle.textContent = activeServer.name
+  }
+  if (serverContextMenuSubtitle) {
+    serverContextMenuSubtitle.textContent = `Role: ${String(activeServer.current_role_name || "member")}`
+  }
+
+  setServerContextMenuItemHidden("rename", !canRenameServer)
+  setServerContextMenuItemHidden("copy-invite", !canGetInvite)
+  setServerContextMenuItemHidden("regen-invite", !canRegenInvite)
+  setServerContextMenuItemHidden("transfer-owner", !canTransferOwner)
+  setServerContextMenuItemHidden("delete", !canDeleteServer)
+  setServerContextMenuItemHidden("leave", !canLeaveActiveServer)
+  const menuDivider = serverContextMenu.querySelector(".context-menu-divider")
+  if (menuDivider) {
+    menuDivider.hidden =
+      (!canDeleteServer && !canLeaveActiveServer) ||
+      (!canRenameServer && !canGetInvite && !canRegenInvite && !canTransferOwner)
+  }
+
+  serverContextMenu.dataset.serverId = String(activeServer.id)
+  serverContextMenu.classList.add("show")
+  serverContextMenu.setAttribute("aria-hidden", "false")
+  serverContextMenu.style.left = "0px"
+  serverContextMenu.style.top = "0px"
+
+  const card = serverContextMenu.querySelector(".context-menu-card")
+  const cardRect = card ? card.getBoundingClientRect() : { width: 280, height: 260 }
+  const left = Math.max(12, Math.min(x, window.innerWidth - cardRect.width - 12))
+  const top = Math.max(12, Math.min(y, window.innerHeight - cardRect.height - 12))
+  serverContextMenu.style.left = `${left}px`
+  serverContextMenu.style.top = `${top}px`
+}
+
+async function copyActiveServerInviteLink() {
+  await handleGetInvite()
+  if (!state.inviteShareUrl) {
+    notify("Invite link belum tersedia", "error")
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(state.inviteShareUrl)
+    notify("Invite link berhasil disalin", "success")
+  } catch {
+    notify("Gagal menyalin invite link", "error")
+  }
+}
 
 function bindUiHandlers() {
   serverSelect.addEventListener("change", () => {
@@ -112,12 +382,22 @@ function bindUiHandlers() {
 
   if (serverList) {
     serverList.addEventListener("click", (e) => {
+      closeServerContextMenu()
       const target = e.target.closest(".server-item")
       if (!target) return
       const serverId = target.dataset.serverId
       if (!serverId || serverSelect.value === serverId) return
       serverSelect.value = serverId
       serverSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+
+    serverList.addEventListener("contextmenu", (e) => {
+      const target = e.target.closest(".server-item")
+      if (!target) return
+      e.preventDefault()
+      const serverId = target.dataset.serverId
+      if (!serverId) return
+      openServerContextMenu(serverId, e.clientX, e.clientY)
     })
   }
 
@@ -126,7 +406,14 @@ function bindUiHandlers() {
       const target = e.target.closest(".channel-item")
       if (!target) return
       const channelName = target.dataset.channelName
-      if (!channelName || channelSelect.value === channelName) return
+      const isVoiceChannel = String(target.dataset.channelType || "").toLowerCase() === CHANNEL_TYPE_VOICE
+      if (!channelName) return
+      if (channelSelect.value === channelName) {
+        if (isVoiceChannel) {
+          joinVoiceChannel({ silent: true })
+        }
+        return
+      }
       channelSelect.value = channelName
       channelSelect.dispatchEvent(new Event("change", { bubbles: true }))
     })
@@ -164,12 +451,12 @@ function bindUiHandlers() {
 
   renameServerBtn.addEventListener("click", (e) => {
     e.preventDefault()
-    handleRenameServer()
+    openRenameServerModal()
   })
 
   createServerBtn.addEventListener("click", (e) => {
     e.preventDefault()
-    handleCreateServer()
+    openCreateServerModal()
   })
 
   leaveServerBtn.addEventListener("click", (e) => {
@@ -179,7 +466,7 @@ function bindUiHandlers() {
 
   transferOwnerBtn.addEventListener("click", (e) => {
     e.preventDefault()
-    handleTransferOwner()
+    openTransferOwnerModal()
   })
 
   promoteBtn.addEventListener("click", (e) => {
@@ -284,17 +571,90 @@ function bindUiHandlers() {
       e.preventDefault()
       const activeServer = getActiveServer()
       if (activeServer && hasServerPermission("server.rename", activeServer)) {
-        handleRenameServer()
+        openRenameServerModal()
         return
       }
-      handleCreateServer()
+      if (activeServer) {
+        notify("Kamu tidak punya izin rename server", "error")
+        return
+      }
+      openCreateServerModal()
     }
   })
+
+  if (createServerModalSubmitBtn) {
+    createServerModalSubmitBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      submitCreateServerModal()
+    })
+  }
+
+  if (createServerModalCancelBtn) {
+    createServerModalCancelBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      closeCreateServerModal()
+    })
+  }
+
+  if (createServerModal) {
+    createServerModal.addEventListener("click", (e) => {
+      if (e.target === createServerModal) {
+        closeCreateServerModal()
+      }
+    })
+  }
+
+  if (createServerModalInput) {
+    createServerModalInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault()
+        submitCreateServerModal()
+        return
+      }
+      if (e.key === "Escape") {
+        e.preventDefault()
+        closeCreateServerModal()
+      }
+    })
+  }
+
+  if (serverContextMenu && Array.isArray(serverContextMenuItems)) {
+    serverContextMenuItems.forEach((item) => {
+      item.addEventListener("click", async (e) => {
+        e.preventDefault()
+        const actionName = item.dataset.serverMenuAction
+        closeServerContextMenu()
+        if (actionName === "rename") {
+          openRenameServerModal()
+          return
+        }
+        if (actionName === "copy-invite") {
+          await copyActiveServerInviteLink()
+          return
+        }
+        if (actionName === "regen-invite") {
+          await handleRegenInvite()
+          return
+        }
+        if (actionName === "transfer-owner") {
+          openTransferOwnerModal()
+          return
+        }
+        if (actionName === "leave") {
+          await handleLeaveServer()
+          return
+        }
+        if (actionName === "delete") {
+          await handleDeleteServer()
+        }
+      })
+    })
+  }
 
   ownerUsernameInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault()
-      handleTransferOwner()
+      openTransferOwnerModal()
     }
   })
 
@@ -349,17 +709,40 @@ function bindUiHandlers() {
     }
   })
 
-  voiceJoinBtn.addEventListener("click", (e) => {
-    e.preventDefault()
-    joinVoiceChannel()
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isCreateServerModalOpen()) {
+      e.preventDefault()
+      closeCreateServerModal()
+      return
+    }
+    if (e.key === "Escape" && isServerContextMenuOpen()) {
+      e.preventDefault()
+      closeServerContextMenu()
+    }
   })
 
-  if (voiceJoinHeroBtn) {
-    voiceJoinHeroBtn.addEventListener("click", (e) => {
-      e.preventDefault()
-      joinVoiceChannel()
-    })
-  }
+  document.addEventListener("click", (e) => {
+    if (!isServerContextMenuOpen()) return
+    if (serverContextMenu && serverContextMenu.contains(e.target)) return
+    if (e.target.closest(".server-item")) return
+    closeServerContextMenu()
+  })
+
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (isServerContextMenuOpen()) {
+        closeServerContextMenu()
+      }
+    },
+    true
+  )
+
+  window.addEventListener("resize", () => {
+    if (isServerContextMenuOpen()) {
+      closeServerContextMenu()
+    }
+  })
 
   voiceLeaveBtn.addEventListener("click", (e) => {
     e.preventDefault()
@@ -370,6 +753,34 @@ function bindUiHandlers() {
     e.preventDefault()
     toggleVoiceMute()
   })
+
+  if (voiceCameraBtn) {
+    voiceCameraBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      toggleVoiceCamera()
+    })
+  }
+
+  if (voiceScreenBtn) {
+    voiceScreenBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      toggleVoiceScreenShare()
+    })
+  }
+
+  if (voiceCameraFlipBtn) {
+    voiceCameraFlipBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      toggleVoiceCameraFacing()
+    })
+  }
+
+  if (voiceLayoutBtn) {
+    voiceLayoutBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      toggleVoiceStageLayoutMode()
+    })
+  }
 }
 
 export { bindUiHandlers }

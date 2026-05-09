@@ -11,7 +11,7 @@ const {
   CHANNEL_NAME_PATTERN
 } = require("./lib/constants")
 const { normalizeText, isValidLength } = require("./lib/validation")
-const { dbRun, dbGet, dbAll, initDatabase } = require("./lib/db")
+const { dbRun, dbGet, dbAll, initDatabase, isPostgres } = require("./lib/db")
 const { requireServerPermission, requireServerOwner } = require("./lib/permissions")
 const { writeAuditLog } = require("./services/audit")
 const { ensureInviteForServer } = require("./services/invites")
@@ -26,8 +26,7 @@ const {
   ensureMemberRoleId
 } = require("./services/members")
 const { buildRoomKey, buildVoiceRoomKey, getChannelPermission } = require("./services/channels")
-
-initDatabase()
+const { resolveSfuConfig, buildSfuRoomName, issueLivekitToken } = require("./services/sfu")
 
 const app = express()
 app.use(cors())
@@ -85,14 +84,30 @@ function buildIceConfig() {
   return config
 }
 
+const SFU_CONFIG = resolveSfuConfig()
+const SERVER_DEBUG =
+  String(process.env.PRIVIX_DEBUG || "").trim() === "1" ||
+  String(process.env.DEBUG_PRIVIX || "").trim() === "1"
+const LEGACY_CHANNELS_ENABLED =
+  String(process.env.PRIVIX_ENABLE_LEGACY_CHANNELS || "").trim() === "1"
+
+function buildClientVoiceConfig() {
+  return {
+    use_sfu: Boolean(SFU_CONFIG.enabled),
+    sfu_provider: SFU_CONFIG.provider || "livekit",
+    sfu_ws_url: SFU_CONFIG.wsUrl || "",
+    sfu_client_sdk_url: SFU_CONFIG.clientSdkUrl || ""
+  }
+}
+
 app.get("/config.js", (req, res) => {
   const config = buildIceConfig()
+  const voiceConfig = buildClientVoiceConfig()
   res.set("Content-Type", "application/javascript; charset=utf-8")
-  if (!config) {
-    res.end("window.PRIVIX_ICE = null;")
-    return
-  }
-  res.end(`window.PRIVIX_ICE = ${JSON.stringify(config)};`)
+  const configScript = config ? JSON.stringify(config) : "null"
+  res.end(
+    `window.PRIVIX_ICE = ${configScript};\nwindow.PRIVIX_VOICE_CONFIG = ${JSON.stringify(voiceConfig)};`
+  )
 })
 
 app.use(express.static(path.join(__dirname, "..", "client")))
@@ -104,9 +119,79 @@ const io = new Server(server, {
   pingInterval: 25000,
   pingTimeout: 60000
 })
+const VOICE_DEBUG =
+  String(process.env.PRIVIX_VOICE_DEBUG || "").trim() === "1" ||
+  String(process.env.VOICE_DEBUG || "").trim() === "1"
+
+function voiceDebugServer(event, details = null) {
+  if (!VOICE_DEBUG) return
+  const timestamp = new Date().toISOString()
+  if (details === null || typeof details === "undefined") {
+    console.log(`[voice-debug][server][${timestamp}] ${event}`)
+    return
+  }
+  console.log(`[voice-debug][server][${timestamp}] ${event}`, details)
+}
+
+function debugServer(scope, event, details = null) {
+  if (!SERVER_DEBUG) return
+  const timestamp = new Date().toISOString()
+  const prefix = `[privix-debug][server][${scope || "app"}][${timestamp}] ${event}`
+  if (details === null || typeof details === "undefined") {
+    console.log(prefix)
+    return
+  }
+  console.log(prefix, details)
+}
 
 function buildServerPresenceRoomKey(serverId) {
   return `presence:server:${Number(serverId)}`
+}
+
+function parseUsernamePayload(payload) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    return {
+      username: payload.username,
+      authToken: payload.auth_token || payload.authToken || ""
+    }
+  }
+  return { username: payload, authToken: "" }
+}
+
+async function getValidInviteByCode(code) {
+  const invite = await dbGet(
+    `
+    SELECT i.id, i.server_id, i.code, i.max_uses, i.used_count, i.expires_at, s.name AS server_name
+    FROM invites i
+    JOIN servers s ON s.id = i.server_id
+    WHERE i.code = ?
+    LIMIT 1
+    `,
+    [code]
+  )
+  if (!invite) {
+    const error = new Error("Invite code tidak ditemukan")
+    error.code = "INVITE_NOT_FOUND"
+    throw error
+  }
+
+  if (invite.expires_at) {
+    const now = Date.now()
+    const expiresAt = new Date(invite.expires_at).getTime()
+    if (!Number.isNaN(expiresAt) && expiresAt <= now) {
+      const error = new Error("Invite code sudah expired")
+      error.code = "INVITE_EXPIRED"
+      throw error
+    }
+  }
+
+  if (invite.max_uses && invite.used_count >= invite.max_uses) {
+    const error = new Error("Invite code sudah mencapai batas pemakaian")
+    error.code = "INVITE_LIMIT_REACHED"
+    throw error
+  }
+
+  return invite
 }
 
 const voiceRoomStartedAtByKey = new Map()
@@ -153,6 +238,8 @@ io.on("connection", (socket) => {
   socket.data.voiceServerId = null
   socket.data.voiceChannel = ""
   socket.data.voiceMuted = false
+  socket.data.voiceCameraEnabled = false
+  socket.data.voiceScreenSharing = false
   socket.data.voiceJoinedAtTs = 0
 
   async function emitServerOnlineUsers(serverId) {
@@ -209,6 +296,23 @@ io.on("connection", (socket) => {
     })
   }
 
+  function normalizeVoiceStreamSource(rawValue) {
+    const source = String(rawValue || "").trim().toLowerCase()
+    if (source === "screen") return "screen"
+    if (source === "camera") return "camera"
+    return ""
+  }
+
+  function applyVoiceStreamState(source, isActive) {
+    if (source === "camera") {
+      socket.data.voiceCameraEnabled = Boolean(isActive)
+      return
+    }
+    if (source === "screen") {
+      socket.data.voiceScreenSharing = Boolean(isActive)
+    }
+  }
+
   async function emitVoicePresenceUpdate(serverId, channelName) {
     if (!serverId || !channelName) return
     const voiceRoomKey = buildVoiceRoomKey(serverId, channelName)
@@ -217,7 +321,9 @@ io.on("connection", (socket) => {
     const peerList = peers.map((peer) => ({
       id: peer.id,
       username: peer.data.username || "",
-      is_muted: Boolean(peer.data.voiceMuted)
+      is_muted: Boolean(peer.data.voiceMuted),
+      is_camera_enabled: Boolean(peer.data.voiceCameraEnabled),
+      is_screen_sharing: Boolean(peer.data.voiceScreenSharing)
     }))
     const presenceRoomKey = buildServerPresenceRoomKey(serverId)
     io.to(presenceRoomKey).emit("voice presence update", {
@@ -257,29 +363,36 @@ io.on("connection", (socket) => {
     socket.data.voiceServerId = null
     socket.data.voiceChannel = ""
     socket.data.voiceMuted = false
+    socket.data.voiceCameraEnabled = false
+    socket.data.voiceScreenSharing = false
     socket.data.voiceJoinedAtTs = 0
     if (serverId && channelName) {
       emitVoicePresenceUpdate(serverId, channelName).catch(() => {})
     }
   }
 
-  socket.on("set username", async (rawUsername, ack) => {
+  socket.on("set username", async (payload, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
+      const { username: rawUsername, authToken } = parseUsernamePayload(payload)
       const nextUsername = normalizeText(rawUsername)
       if (!isValidLength(nextUsername, MAX_USERNAME_LENGTH)) {
         reply({ ok: false, error: `Username wajib 1-${MAX_USERNAME_LENGTH} karakter` })
         return
       }
 
-      const user = await ensureUser(nextUsername)
+      const { user, authToken: nextAuthToken } = await ensureUser(nextUsername, authToken)
       socket.data.username = user.username
       socket.data.userId = user.id
       if (Number.isInteger(Number(socket.data.activeServerId)) && Number(socket.data.activeServerId) > 0) {
         emitServerOnlineUsers(Number(socket.data.activeServerId)).catch(() => {})
       }
-      reply({ ok: true, username: user.username, user_id: user.id })
+      reply({ ok: true, username: user.username, user_id: user.id, auth_token: nextAuthToken || undefined })
     } catch (error) {
+      if (error && error.code === "USERNAME_TAKEN") {
+        reply({ ok: false, error: "Username sudah digunakan user lain" })
+        return
+      }
       console.error("set username error:", error)
       reply({ ok: false, error: "Gagal set username" })
     }
@@ -1000,6 +1113,114 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("delete server", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      if (!socket.data.userId) {
+        reply({ ok: false, error: "Set username dulu" })
+        return
+      }
+
+      const serverId = Number(payload && payload.server_id)
+      if (!Number.isInteger(serverId) || serverId <= 0) {
+        reply({ ok: false, error: "Server tidak valid" })
+        return
+      }
+
+      const ownerCheck = await requireServerOwner(socket.data.userId, serverId)
+      if (!ownerCheck.ok) {
+        reply({ ok: false, error: ownerCheck.error })
+        return
+      }
+
+      const serverRow = await dbGet(
+        "SELECT id, owner_user_id, name FROM servers WHERE id = ? LIMIT 1",
+        [serverId]
+      )
+      if (!serverRow) {
+        reply({ ok: false, error: "Server tidak ditemukan" })
+        return
+      }
+
+      const memberRows = await dbAll(
+        "SELECT DISTINCT user_id FROM server_members WHERE server_id = ?",
+        [serverId]
+      )
+      const affectedUserIds = new Set(
+        (Array.isArray(memberRows) ? memberRows : [])
+          .map((row) => Number(row && row.user_id))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      )
+
+      await dbRun("DELETE FROM servers WHERE id = ?", [serverId])
+
+      if (Number(socket.data.activeServerId) === serverId) {
+        clearTypingIndicator()
+        if (socket.data.roomKey) {
+          socket.leave(socket.data.roomKey)
+        }
+        socket.leave(buildServerPresenceRoomKey(serverId))
+        socket.data.roomKey = ""
+        socket.data.activeServerId = null
+        socket.data.activeChannel = ""
+        socket.data.joinVersion = Number(socket.data.joinVersion || 0) + 1
+      }
+      if (Number(socket.data.voiceServerId) === serverId) {
+        await leaveVoiceRoom({ notifyPeers: true })
+      }
+
+      const sockets = await io.fetchSockets()
+      for (const peer of sockets) {
+        const peerUserId = Number(peer.data.userId)
+        if (!affectedUserIds.has(peerUserId)) continue
+        if (peer.id === socket.id) continue
+
+        if (Number(peer.data.activeServerId) === serverId) {
+          if (peer.data.roomKey) {
+            peer.leave(peer.data.roomKey)
+          }
+          peer.leave(buildServerPresenceRoomKey(serverId))
+          peer.data.roomKey = ""
+          peer.data.activeServerId = null
+          peer.data.activeChannel = ""
+          peer.data.joinVersion = Number(peer.data.joinVersion || 0) + 1
+        }
+
+        if (Number(peer.data.voiceServerId) === serverId) {
+          const peerVoiceRoomKey = peer.data.voiceRoomKey
+          if (peerVoiceRoomKey) {
+            peer.to(peerVoiceRoomKey).emit("voice user left", {
+              id: peer.id,
+              username: peer.data.username || ""
+            })
+            peer.leave(peerVoiceRoomKey)
+          }
+          peer.data.voiceRoomKey = ""
+          peer.data.voiceServerId = null
+          peer.data.voiceChannel = ""
+          peer.data.voiceMuted = false
+          peer.data.voiceCameraEnabled = false
+          peer.data.voiceScreenSharing = false
+          peer.data.voiceJoinedAtTs = 0
+        }
+
+        peer.emit("removed from server", {
+          server_id: serverId,
+          server_name: serverRow.name,
+          reason: "deleted"
+        })
+      }
+
+      const remainingServers = await getMemberServers(socket.data.userId)
+      const nextServerId = remainingServers.length > 0 ? remainingServers[0].id : null
+
+      reply({ ok: true, deleted_server_id: serverId, next_server_id: nextServerId })
+    } catch (error) {
+      console.error("delete server error:", error)
+      reply({ ok: false, error: "Gagal menghapus server" })
+    }
+  })
+
   socket.on("create server", async (payload, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
@@ -1046,23 +1267,7 @@ io.on("connection", (socket) => {
         [serverId]
       )
 
-      let inviteCode = generateInviteCode()
-      let inviteCreated = false
-      for (let i = 0; i < 5 && !inviteCreated; i += 1) {
-        try {
-          await dbRun(
-            "INSERT INTO invites (server_id, code, created_by_user_id) VALUES (?, ?, ?)",
-            [serverId, inviteCode, socket.data.userId]
-          )
-          inviteCreated = true
-        } catch (error) {
-          inviteCode = generateInviteCode()
-        }
-      }
-
-      if (!inviteCreated) {
-        throw new Error("invite code generation failed")
-      }
+      const inviteCode = await ensureInviteForServer(serverId, socket.data.userId)
 
       await dbRun("COMMIT")
       reply({
@@ -1331,6 +1536,46 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("preview invite", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const code = normalizeText(payload && payload.code).toUpperCase()
+      if (!code) {
+        reply({ ok: false, error: "Invite code tidak valid" })
+        return
+      }
+
+      const invite = await getValidInviteByCode(code)
+      debugServer("invite", "preview ok", {
+        socketId: socket.id,
+        code,
+        serverId: invite.server_id
+      })
+      let alreadyMember = false
+      if (socket.data.userId) {
+        const existingMember = await dbGet(
+          "SELECT id FROM server_members WHERE server_id = ? AND user_id = ? LIMIT 1",
+          [invite.server_id, socket.data.userId]
+        )
+        alreadyMember = Boolean(existingMember)
+      }
+
+      reply({
+        ok: true,
+        code: invite.code,
+        server_id: invite.server_id,
+        server_name: invite.server_name,
+        already_member: alreadyMember
+      })
+    } catch (error) {
+      const knownInviteError = error && String(error.code || "").startsWith("INVITE_")
+      if (!knownInviteError) {
+        console.error("preview invite error:", error)
+      }
+      reply({ ok: false, error: error.message || "Gagal memeriksa invite" })
+    }
+  })
+
   socket.on("join via invite", async (payload, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
@@ -1345,38 +1590,13 @@ io.on("connection", (socket) => {
         return
       }
 
-      const invite = await dbGet(
-        `
-        SELECT id, server_id, code, max_uses, used_count, expires_at
-        FROM invites
-        WHERE code = ?
-        LIMIT 1
-        `,
-        [code]
-      )
-      if (!invite) {
-        reply({ ok: false, error: "Invite code tidak ditemukan" })
-        return
-      }
-
-      if (invite.expires_at) {
-        const now = Date.now()
-        const expiresAt = new Date(invite.expires_at).getTime()
-        if (!Number.isNaN(expiresAt) && expiresAt <= now) {
-          reply({ ok: false, error: "Invite code sudah expired" })
-          return
-        }
-      }
-      if (invite.max_uses && invite.used_count >= invite.max_uses) {
-        reply({ ok: false, error: "Invite code sudah mencapai batas pemakaian" })
-        return
-      }
-
-      const serverRow = await dbGet("SELECT id FROM servers WHERE id = ? LIMIT 1", [invite.server_id])
-      if (!serverRow) {
-        reply({ ok: false, error: "Server pada invite tidak ditemukan" })
-        return
-      }
+      const invite = await getValidInviteByCode(code)
+      debugServer("invite", "join requested", {
+        socketId: socket.id,
+        code,
+        serverId: invite.server_id,
+        userId: socket.data.userId
+      })
 
       const memberRoleId = await ensureMemberRoleId(invite.server_id)
       const existingMember = await dbGet(
@@ -1584,6 +1804,14 @@ io.on("connection", (socket) => {
   socket.on("voice join", async (payload, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
+      voiceDebugServer("voice join request", {
+        socketId: socket.id,
+        serverId: Number(payload && payload.server_id),
+        channel: normalizeText(payload && payload.channel).toLowerCase(),
+        isMuted: Boolean(payload && payload.is_muted),
+        isCameraEnabled: Boolean(payload && payload.is_camera_enabled),
+        isScreenSharing: Boolean(payload && payload.is_screen_sharing)
+      })
       if (!socket.data.userId || !socket.data.username) {
         reply({ ok: false, error: "Set username dulu" })
         return
@@ -1651,6 +1879,8 @@ io.on("connection", (socket) => {
           socket.data.voiceJoinedAtTs = Date.now()
         }
         socket.data.voiceMuted = Boolean(payload && payload.is_muted)
+        socket.data.voiceCameraEnabled = Boolean(payload && payload.is_camera_enabled)
+        socket.data.voiceScreenSharing = Boolean(payload && payload.is_screen_sharing)
         const peers = await io.in(voiceRoomKey).fetchSockets()
         let roomStartedAtTs = resolveVoiceRoomStartedAt(voiceRoomKey, peers)
         if (!roomStartedAtTs) {
@@ -1662,7 +1892,9 @@ io.on("connection", (socket) => {
           .map((peer) => ({
             id: peer.id,
             username: peer.data.username || "",
-            is_muted: Boolean(peer.data.voiceMuted)
+            is_muted: Boolean(peer.data.voiceMuted),
+            is_camera_enabled: Boolean(peer.data.voiceCameraEnabled),
+            is_screen_sharing: Boolean(peer.data.voiceScreenSharing)
           }))
 
         reply({
@@ -1671,6 +1903,7 @@ io.on("connection", (socket) => {
           channel: channelName,
           peers: peerList,
           can_speak: canSpeak,
+          voice_mode: SFU_CONFIG.enabled ? "sfu" : "mesh",
           room_started_at_ts: roomStartedAtTs,
           server_now_ts: Date.now()
         })
@@ -1682,6 +1915,8 @@ io.on("connection", (socket) => {
       }
 
       socket.data.voiceMuted = Boolean(payload && payload.is_muted)
+      socket.data.voiceCameraEnabled = Boolean(payload && payload.is_camera_enabled)
+      socket.data.voiceScreenSharing = Boolean(payload && payload.is_screen_sharing)
       const peers = await io.in(voiceRoomKey).fetchSockets()
       let roomStartedAtTs = resolveVoiceRoomStartedAt(voiceRoomKey, peers)
       if (!roomStartedAtTs) {
@@ -1693,7 +1928,9 @@ io.on("connection", (socket) => {
         .map((peer) => ({
           id: peer.id,
           username: peer.data.username || "",
-          is_muted: Boolean(peer.data.voiceMuted)
+          is_muted: Boolean(peer.data.voiceMuted),
+          is_camera_enabled: Boolean(peer.data.voiceCameraEnabled),
+          is_screen_sharing: Boolean(peer.data.voiceScreenSharing)
         }))
 
       socket.join(voiceRoomKey)
@@ -1707,6 +1944,8 @@ io.on("connection", (socket) => {
         id: socket.id,
         username: socket.data.username || "",
         is_muted: Boolean(socket.data.voiceMuted),
+        is_camera_enabled: Boolean(socket.data.voiceCameraEnabled),
+        is_screen_sharing: Boolean(socket.data.voiceScreenSharing),
         room_started_at_ts: joinedRoomStartedAtTs,
         server_now_ts: Date.now()
       })
@@ -1719,12 +1958,96 @@ io.on("connection", (socket) => {
         channel: channelName,
         peers: peerList,
         can_speak: canSpeak,
+        voice_mode: SFU_CONFIG.enabled ? "sfu" : "mesh",
         room_started_at_ts: joinedRoomStartedAtTs,
         server_now_ts: Date.now()
       })
+      voiceDebugServer("voice join success", {
+        socketId: socket.id,
+        serverId,
+        channel: channelName,
+        peers: peerList.length,
+        canSpeak,
+        voiceRoomKey
+      })
     } catch (error) {
+      voiceDebugServer("voice join error", {
+        socketId: socket.id,
+        message: error && error.message ? error.message : String(error)
+      })
       console.error("voice join error:", error)
       reply({ ok: false, error: "Gagal join voice channel" })
+    }
+  })
+
+  socket.on("voice sfu token", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      if (!socket.data.userId || !socket.data.username) {
+        reply({ ok: false, error: "Set username dulu" })
+        return
+      }
+      if (!SFU_CONFIG.enabled) {
+        reply({ ok: false, error: "SFU belum aktif di server" })
+        return
+      }
+
+      const serverId = Number(payload && payload.server_id)
+      const channelName = normalizeText(payload && payload.channel).toLowerCase()
+      if (!Number.isInteger(serverId) || serverId <= 0) {
+        reply({ ok: false, error: "Server tidak valid" })
+        return
+      }
+      if (!isValidLength(channelName, MAX_CHANNEL_LENGTH)) {
+        reply({ ok: false, error: "Channel tidak valid" })
+        return
+      }
+
+      const expectedVoiceRoomKey = buildVoiceRoomKey(serverId, channelName)
+      if (socket.data.voiceRoomKey !== expectedVoiceRoomKey) {
+        reply({ ok: false, error: "Join voice dulu sebelum meminta token SFU" })
+        return
+      }
+
+      const member = await isServerMember(socket.data.userId, serverId)
+      if (!member) {
+        reply({ ok: false, error: "Kamu bukan member server ini" })
+        return
+      }
+
+      const roomName = buildSfuRoomName(serverId, channelName)
+      const token = issueLivekitToken(SFU_CONFIG, {
+        identity: socket.id,
+        displayName: socket.data.username || "Unknown",
+        roomName,
+        metadata: {
+          user_id: Number(socket.data.userId) || 0,
+          username: socket.data.username || "",
+          server_id: serverId,
+          channel: channelName
+        }
+      })
+
+      reply({
+        ok: true,
+        provider: SFU_CONFIG.provider || "livekit",
+        ws_url: SFU_CONFIG.wsUrl,
+        token,
+        room_name: roomName,
+        identity: socket.id
+      })
+      voiceDebugServer("voice sfu token issued", {
+        socketId: socket.id,
+        roomName,
+        serverId,
+        channel: channelName
+      })
+    } catch (error) {
+      voiceDebugServer("voice sfu token error", {
+        socketId: socket.id,
+        message: error && error.message ? error.message : String(error)
+      })
+      reply({ ok: false, error: "Gagal membuat token SFU" })
     }
   })
 
@@ -1786,7 +2109,9 @@ io.on("connection", (socket) => {
       const peerList = peers.map((peer) => ({
         id: peer.id,
         username: peer.data.username || "",
-        is_muted: Boolean(peer.data.voiceMuted)
+        is_muted: Boolean(peer.data.voiceMuted),
+        is_camera_enabled: Boolean(peer.data.voiceCameraEnabled),
+        is_screen_sharing: Boolean(peer.data.voiceScreenSharing)
       }))
 
       reply({
@@ -1819,6 +2144,12 @@ io.on("connection", (socket) => {
       const targetId = payload && (payload.target_id || payload.targetId)
       const data = payload && payload.data
       if (!targetId || !data || !socket.data.voiceRoomKey) return
+      voiceDebugServer("voice signal relay request", {
+        fromId: socket.id,
+        targetId,
+        type: data && data.type ? data.type : data && data.candidate ? "candidate" : data && data.restart ? "restart" : "unknown",
+        roomKey: socket.data.voiceRoomKey
+      })
 
       const targetSocket = io.sockets.sockets.get(targetId)
       if (!targetSocket || targetSocket.data.voiceRoomKey !== socket.data.voiceRoomKey) {
@@ -1828,6 +2159,11 @@ io.on("connection", (socket) => {
       targetSocket.emit("voice signal", {
         from_id: socket.id,
         data
+      })
+      voiceDebugServer("voice signal relayed", {
+        fromId: socket.id,
+        targetId,
+        type: data && data.type ? data.type : data && data.candidate ? "candidate" : data && data.restart ? "restart" : "unknown"
       })
     } catch (error) {
       console.error("voice signal error:", error)
@@ -1847,6 +2183,74 @@ io.on("connection", (socket) => {
       }
     } catch (error) {
       console.error("voice mute state error:", error)
+    }
+  })
+
+  socket.on("voice stream state", (payload) => {
+    try {
+      if (!socket.data.voiceRoomKey) return
+      const source = normalizeVoiceStreamSource(payload && payload.source)
+      if (!source) return
+      const isActive = Boolean(payload && payload.is_active)
+      applyVoiceStreamState(source, isActive)
+      voiceDebugServer("voice stream state", {
+        socketId: socket.id,
+        roomKey: socket.data.voiceRoomKey,
+        source,
+        isActive
+      })
+      socket.to(socket.data.voiceRoomKey).emit("voice stream state", {
+        id: socket.id,
+        source,
+        is_active: isActive
+      })
+      if (socket.data.voiceServerId && socket.data.voiceChannel) {
+        emitVoicePresenceUpdate(socket.data.voiceServerId, socket.data.voiceChannel).catch(() => {})
+      }
+    } catch (error) {
+      console.error("voice stream state error:", error)
+    }
+  })
+
+  socket.on("voice camera state", (payload) => {
+    try {
+      if (!socket.data.voiceRoomKey) return
+      applyVoiceStreamState("camera", Boolean(payload && payload.is_camera_enabled))
+      voiceDebugServer("voice camera state", {
+        socketId: socket.id,
+        roomKey: socket.data.voiceRoomKey,
+        isCameraEnabled: socket.data.voiceCameraEnabled
+      })
+      socket.to(socket.data.voiceRoomKey).emit("voice camera state", {
+        id: socket.id,
+        is_camera_enabled: Boolean(socket.data.voiceCameraEnabled)
+      })
+      if (socket.data.voiceServerId && socket.data.voiceChannel) {
+        emitVoicePresenceUpdate(socket.data.voiceServerId, socket.data.voiceChannel).catch(() => {})
+      }
+    } catch (error) {
+      console.error("voice camera state error:", error)
+    }
+  })
+
+  socket.on("voice screen state", (payload) => {
+    try {
+      if (!socket.data.voiceRoomKey) return
+      applyVoiceStreamState("screen", Boolean(payload && payload.is_screen_sharing))
+      voiceDebugServer("voice screen state", {
+        socketId: socket.id,
+        roomKey: socket.data.voiceRoomKey,
+        isScreenSharing: socket.data.voiceScreenSharing
+      })
+      socket.to(socket.data.voiceRoomKey).emit("voice screen state", {
+        id: socket.id,
+        is_screen_sharing: Boolean(socket.data.voiceScreenSharing)
+      })
+      if (socket.data.voiceServerId && socket.data.voiceChannel) {
+        emitVoicePresenceUpdate(socket.data.voiceServerId, socket.data.voiceChannel).catch(() => {})
+      }
+    } catch (error) {
+      console.error("voice screen state error:", error)
     }
   })
 
@@ -1948,6 +2352,10 @@ io.on("connection", (socket) => {
   socket.on("join channel", async (channel, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
+      if (!LEGACY_CHANNELS_ENABLED) {
+        reply({ ok: false, error: "Legacy channel sudah dinonaktifkan. Gunakan server channel." })
+        return
+      }
       const channelName = normalizeText(channel)
       if (!socket.data.username) {
         reply({ ok: false, error: "Set username dulu" })
@@ -2090,9 +2498,17 @@ io.on("connection", (socket) => {
 
 const PORT = Number(process.env.PORT) || 3000
 
-server.listen(PORT, () => {
-  console.log(`Privix server running on port ${PORT}`)
-})
+async function startServer() {
+  try {
+    await initDatabase()
+    server.listen(PORT, () => {
+      console.log(`Privix server running on port ${PORT} (${isPostgres ? "postgres" : "sqlite"})`)
+    })
+  } catch (error) {
+    console.error("Database init failed:", error)
+    process.exitCode = 1
+  }
+}
 
 server.on("error", (err) => {
   if (err && err.code === "EADDRINUSE") {
@@ -2101,3 +2517,5 @@ server.on("error", (err) => {
   }
   console.error("Server error:", err)
 })
+
+startServer()

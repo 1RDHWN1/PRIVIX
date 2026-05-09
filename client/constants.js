@@ -1,4 +1,5 @@
 const USERNAME_KEY = "privix_username"
+const USER_AUTH_TOKENS_KEY = "privix_user_auth_tokens"
 const SERVER_KEY = "privix_server_id"
 const CHANNEL_KEY = "privix_channel"
 const MAX_MESSAGE_LENGTH = 2000
@@ -34,6 +35,7 @@ const ROLE_PERMISSIONS = {
 
 export {
   USERNAME_KEY,
+  USER_AUTH_TOKENS_KEY,
   SERVER_KEY,
   CHANNEL_KEY,
   MAX_MESSAGE_LENGTH,

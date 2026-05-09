@@ -7,6 +7,8 @@ import { getChannelVoicePresence } from "../voice/presenceStore.js"
 
 let voiceDurationTickerId = 0
 let voiceChannelListRenderToken = 0
+let voiceChannelListRenderNeedsForce = false
+let lastVoiceChannelListSignature = ""
 
 function getServerInitials(name) {
   const cleaned = String(name || "").trim()
@@ -51,7 +53,7 @@ function formatElapsedDuration(startedAtTs, clockOffsetMs = voiceState.serverClo
 function syncVoiceDurationTicker(shouldRun) {
   if (shouldRun && !voiceDurationTickerId) {
     voiceDurationTickerId = setInterval(() => {
-      updateVoiceChannelListUi()
+      refreshVoiceChannelDurationLabels()
     }, 1000)
     return
   }
@@ -60,6 +62,23 @@ function syncVoiceDurationTicker(shouldRun) {
     clearInterval(voiceDurationTickerId)
     voiceDurationTickerId = 0
   }
+}
+
+function setVoiceMetaState(meta, { text, startedAtTs = 0, clockOffsetMs = 0, isElapsed = false }) {
+  if (!meta) return
+  meta.textContent = text
+  meta.dataset.durationMode = isElapsed ? "elapsed" : "static"
+  meta.dataset.startedAtTs = String(Number(startedAtTs || 0))
+  meta.dataset.clockOffsetMs = String(Number(clockOffsetMs || 0))
+}
+
+function refreshVoiceChannelDurationLabels() {
+  if (!channelList) return
+  channelList.querySelectorAll(".channel-voice-meta[data-duration-mode='elapsed']").forEach((meta) => {
+    const startedAtTs = Number(meta.dataset.startedAtTs || 0)
+    const clockOffsetMs = Number(meta.dataset.clockOffsetMs || 0)
+    meta.textContent = formatElapsedDuration(startedAtTs, clockOffsetMs)
+  })
 }
 
 function syncServerListSelection() {
@@ -151,6 +170,20 @@ function buildMutedStatusIcon() {
   return icon
 }
 
+function buildCameraStatusIcon() {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  icon.setAttribute("viewBox", "0 0 24 24")
+  icon.setAttribute("fill", "none")
+  icon.setAttribute("aria-hidden", "true")
+
+  const body = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  body.setAttribute("d", "M4 7.5A2.5 2.5 0 0 1 6.5 5h7A2.5 2.5 0 0 1 16 7.5V9l3.2-2.13c.66-.44 1.55.03 1.55.83v8.6c0 .8-.89 1.27-1.55.83L16 15v1.5a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 16.5z")
+  body.setAttribute("fill", "currentColor")
+
+  icon.appendChild(body)
+  return icon
+}
+
 function buildChannelItem(channel, type) {
   const button = document.createElement("button")
   button.type = "button"
@@ -209,6 +242,9 @@ function buildVoiceMemberRow(participant) {
   if (participant.isMuted) {
     row.classList.add("is-muted")
   }
+  if (participant.isCameraEnabled) {
+    row.classList.add("is-camera-on")
+  }
 
   const avatar = document.createElement("span")
   avatar.className = "voice-channel-member-avatar"
@@ -225,6 +261,14 @@ function buildVoiceMemberRow(participant) {
 
   const meter = buildVoiceMeter()
 
+  const media = document.createElement("span")
+  media.className = "voice-channel-member-media"
+
+  const camera = document.createElement("span")
+  camera.className = "voice-channel-member-camera"
+  camera.setAttribute("aria-hidden", "true")
+  camera.appendChild(buildCameraStatusIcon())
+
   const status = document.createElement("span")
   status.className = "voice-channel-member-status"
   status.setAttribute("aria-hidden", "true")
@@ -234,7 +278,9 @@ function buildVoiceMemberRow(participant) {
   row.appendChild(name)
   row.appendChild(role)
   row.appendChild(meter)
-  row.appendChild(status)
+  media.appendChild(camera)
+  media.appendChild(status)
+  row.appendChild(media)
 
   return row
 }
@@ -254,15 +300,36 @@ function normalizePresencePeer(peer) {
     id: String(peer.id),
     username: String(peer.username || "unknown"),
     isSelf: Boolean(peer.isSelf),
-    isMuted: Boolean(peer.isMuted ?? peer.is_muted)
+    isMuted: Boolean(peer.isMuted ?? peer.is_muted),
+    isCameraEnabled: Boolean(peer.isCameraEnabled ?? peer.is_camera_enabled)
   }
 }
 
 function getSortedPresencePeers(peers) {
-  const list = (Array.isArray(peers) ? peers : [])
+  const raw = (Array.isArray(peers) ? peers : [])
     .map((peer) => normalizePresencePeer(peer))
     .filter(Boolean)
 
+  const byUsername = new Map()
+  raw.forEach((peer) => {
+    const key = String(peer.username || "").trim().toLowerCase()
+    if (!key) return
+    const existing = byUsername.get(key)
+    if (!existing) {
+      byUsername.set(key, { ...peer })
+      return
+    }
+
+    byUsername.set(key, {
+      ...existing,
+      id: existing.isSelf ? existing.id : peer.id,
+      isSelf: existing.isSelf || Boolean(peer.isSelf),
+      isMuted: Boolean(existing.isMuted) && Boolean(peer.isMuted),
+      isCameraEnabled: Boolean(existing.isCameraEnabled) || Boolean(peer.isCameraEnabled)
+    })
+  })
+
+  const list = Array.from(byUsername.values())
   return list.sort((a, b) => {
     if (a.isSelf && !b.isSelf) return -1
     if (!a.isSelf && b.isSelf) return 1
@@ -270,8 +337,61 @@ function getSortedPresencePeers(peers) {
   })
 }
 
-function renderVoiceChannelListUi() {
+function getVoiceChannelListSignature() {
+  if (!channelList) return "no-channel-list"
+
+  const activeServerId = Number(serverSelect.value || 0)
+  const activeVoiceName = voiceState.isVoiceChannel ? String(voiceState.channelName || "") : ""
+  const channelSummary = Array.from(channelList.querySelectorAll('.channel-item[data-channel-type="voice"]'))
+    .map((item) => {
+      const channelName = String(item.dataset.channelName || "")
+      const presence = getChannelVoicePresence(activeServerId, channelName)
+      const presencePeers = getSortedPresencePeers(presence && presence.peers)
+      const activeVoiceParticipants =
+        activeVoiceName && channelName === activeVoiceName ? getSortedVoiceParticipants() : []
+      const participants = presencePeers.length > 0 ? presencePeers : activeVoiceParticipants
+      const peerSummary = participants
+        .map((participant) =>
+          [
+            participant.id,
+            participant.username,
+            participant.isSelf ? 1 : 0,
+            participant.isMuted ? 1 : 0,
+            participant.isCameraEnabled ? 1 : 0,
+            getMemberRole(participant.username)
+          ].join(":")
+        )
+        .join("|")
+
+      return [
+        channelName,
+        channelName === activeVoiceName ? 1 : 0,
+        Number((presence && presence.roomStartedAtTs) || 0),
+        peerSummary
+      ].join("~")
+    })
+    .join("||")
+
+  return [
+    activeServerId,
+    activeVoiceName,
+    voiceState.isVoiceChannel ? 1 : 0,
+    voiceState.isConnecting ? 1 : 0,
+    voiceState.isJoined ? 1 : 0,
+    Number(voiceState.joinedAtTs || 0),
+    channelSummary
+  ].join("###")
+}
+
+function renderVoiceChannelListUi(options = {}) {
   if (!channelList) return
+  const force = Boolean(options && options.force)
+  const signature = getVoiceChannelListSignature()
+  if (!force && signature === lastVoiceChannelListSignature) {
+    refreshVoiceChannelDurationLabels()
+    return
+  }
+  lastVoiceChannelListSignature = signature
 
   channelList.querySelectorAll(".channel-voice-meta").forEach((item) => item.remove())
   channelList.querySelectorAll(".voice-channel-members").forEach((item) => item.remove())
@@ -312,23 +432,33 @@ function renderVoiceChannelListUi() {
     meta.className = "channel-voice-meta"
 
     if (isActiveVoice && voiceState.isConnecting) {
-      meta.textContent = "..."
+      setVoiceMetaState(meta, { text: "...", isElapsed: false })
     } else if (hasParticipants) {
       const startedAtTs = Number((presence && presence.roomStartedAtTs) || voiceState.joinedAtTs || 0)
       const clockOffsetMs = Number((presence && presence.clockOffsetMs) || voiceState.serverClockOffsetMs || 0)
       if (startedAtTs > 0) {
-        meta.textContent = formatElapsedDuration(startedAtTs, clockOffsetMs)
+        setVoiceMetaState(meta, {
+          text: formatElapsedDuration(startedAtTs, clockOffsetMs),
+          startedAtTs,
+          clockOffsetMs,
+          isElapsed: true
+        })
         needsTicker = true
       } else {
-        meta.textContent = "live"
+        setVoiceMetaState(meta, { text: "live", isElapsed: false })
       }
     } else if (isActiveVoice && voiceState.joinedAtTs > 0) {
-      meta.textContent = formatElapsedDuration(voiceState.joinedAtTs)
+      setVoiceMetaState(meta, {
+        text: formatElapsedDuration(voiceState.joinedAtTs),
+        startedAtTs: voiceState.joinedAtTs,
+        clockOffsetMs: voiceState.serverClockOffsetMs,
+        isElapsed: true
+      })
       needsTicker = true
     } else if (isActiveVoice && voiceState.isJoined) {
-      meta.textContent = "live"
+      setVoiceMetaState(meta, { text: "live", isElapsed: false })
     } else {
-      meta.textContent = "idle"
+      setVoiceMetaState(meta, { text: "idle", isElapsed: false })
     }
 
     item.appendChild(meta)
@@ -337,7 +467,7 @@ function renderVoiceChannelListUi() {
       const membersWrap = document.createElement("div")
       membersWrap.className = "voice-channel-members"
 
-      participants.slice(0, 6).forEach((participant) => {
+      participants.forEach((participant) => {
         membersWrap.appendChild(buildVoiceMemberRow(participant))
       })
 
@@ -346,23 +476,29 @@ function renderVoiceChannelListUi() {
   })
 
   syncVoiceDurationTicker(needsTicker)
+  refreshVoiceChannelDurationLabels()
 }
 
 function updateVoiceChannelListUi(options = {}) {
   const immediate = Boolean(options && options.immediate)
+  const force = Boolean(options && options.force)
   if (immediate) {
     if (voiceChannelListRenderToken) {
       cancelAnimationFrame(voiceChannelListRenderToken)
       voiceChannelListRenderToken = 0
     }
-    renderVoiceChannelListUi()
+    voiceChannelListRenderNeedsForce = false
+    renderVoiceChannelListUi({ force })
     return
   }
 
+  voiceChannelListRenderNeedsForce = voiceChannelListRenderNeedsForce || force
   if (voiceChannelListRenderToken) return
   voiceChannelListRenderToken = requestAnimationFrame(() => {
+    const shouldForce = voiceChannelListRenderNeedsForce
     voiceChannelListRenderToken = 0
-    renderVoiceChannelListUi()
+    voiceChannelListRenderNeedsForce = false
+    renderVoiceChannelListUi({ force: shouldForce })
   })
 }
 
@@ -381,6 +517,7 @@ function setChannelOptions(channels) {
   if (channelList) {
     channelList.innerHTML = ""
   }
+  lastVoiceChannelListSignature = ""
   const sortedChannels = [...channels].sort((a, b) => {
     if (a.name === "general" && b.name !== "general") return -1
     if (a.name !== "general" && b.name === "general") return 1

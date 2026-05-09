@@ -58,7 +58,7 @@ function setMembers(members) {
   const activeServerId = getActiveServerId()
   state.membersCache = applyOnlineFlags(members, activeServerId)
   renderMembers(getFilteredMembers())
-  updateVoiceChannelListUi()
+  updateVoiceChannelListUi({ force: true })
 }
 
 function setOnlineUsersForServer(serverId, users) {
@@ -80,7 +80,7 @@ function setOnlineUsersForServer(serverId, users) {
   if (getActiveServerId() !== resolvedServerId) return
   state.membersCache = applyOnlineFlags(state.membersCache, resolvedServerId)
   renderMembers(getFilteredMembers())
-  updateVoiceChannelListUi()
+  updateVoiceChannelListUi({ force: true })
 }
 
 function clearOnlineUsersForServer(serverId) {
@@ -96,7 +96,7 @@ function clearOnlineUsersForServer(serverId) {
   if (getActiveServerId() !== resolvedServerId) return
   state.membersCache = applyOnlineFlags(state.membersCache, resolvedServerId)
   renderMembers(getFilteredMembers())
-  updateVoiceChannelListUi()
+  updateVoiceChannelListUi({ force: true })
 }
 
 function clearAllOnlineUsers() {
@@ -104,7 +104,7 @@ function clearAllOnlineUsers() {
   const activeServerId = getActiveServerId()
   state.membersCache = applyOnlineFlags(state.membersCache, activeServerId)
   renderMembers(getFilteredMembers())
-  updateVoiceChannelListUi()
+  updateVoiceChannelListUi({ force: true })
 }
 
 export {

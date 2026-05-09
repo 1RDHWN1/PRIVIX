@@ -22,13 +22,13 @@ import {
   setUsernameWithTimeout,
   joinServerChannelWithTimeout,
   getChannelPermissionWithTimeout,
-  fetchMembersForServer,
-  fetchAuditLogsForServer
+  fetchMembersForServer
 } from "../api.js"
 import { setMembers } from "../members.js"
 import { setAuditLogs } from "../audit.js"
 import { resetTypingState } from "../typing.js"
 import { socket } from "../socket.js"
+import { getAuthTokenForUsername, storeAuthTokenForUsername } from "../auth.js"
 import {
   getActiveServer,
   applySelectionFromStorage,
@@ -66,31 +66,37 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
   if (!socket.connected) {
     state.isSessionReady = false
     setStatus("Disconnected", false)
+    const errorMessage = "Server chat belum terhubung. Jalankan server lalu refresh."
     if (showAlertOnFailure) {
-      notify("Server chat belum terhubung. Jalankan server lalu refresh.")
+      notify(errorMessage)
     }
-    return
+    return { ok: false, error: errorMessage }
   }
 
   if (!nextUsername) {
     state.isSessionReady = false
     setStatus("Username required", false)
+    const errorMessage = "Masukkan username dulu"
     if (showAlertOnFailure) {
-      notify("Masukkan username dulu")
+      notify(errorMessage)
     }
-    return
+    return { ok: false, error: errorMessage }
   }
 
   try {
-    const userResult = await setUsernameWithTimeout(nextUsername)
-    if (requestId !== state.sessionRequestId) return
+    const authToken = getAuthTokenForUsername(nextUsername)
+    const userResult = await setUsernameWithTimeout(nextUsername, authToken)
+    if (requestId !== state.sessionRequestId) return { ok: false, error: "" }
 
     state.username = userResult.username
     state.currentUserId = Number(userResult.user_id) || null
+    if (userResult.auth_token) {
+      storeAuthTokenForUsername(state.username, userResult.auth_token)
+    }
     localStorage.setItem(USERNAME_KEY, state.username)
 
     state.serversCache = await fetchServersWithTimeout()
-    if (requestId !== state.sessionRequestId) return
+    if (requestId !== state.sessionRequestId) return { ok: false, error: "" }
 
     setServerOptions(state.serversCache)
     const hasSelection = applySelectionFromStorage()
@@ -108,7 +114,7 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
           }
         }, 0)
       }
-      return
+      return { ok: true }
     }
 
     const activeServer = getActiveServer()
@@ -118,30 +124,24 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
       setStatus("No channel available", false)
       messages.innerHTML = ""
       updateChannelActionState()
-      return
+      return { ok: true }
     }
 
     const joinResult = await joinServerChannelWithTimeout(activeServer.id, activeChannel)
-    if (requestId !== state.sessionRequestId) return
+    if (requestId !== state.sessionRequestId) return { ok: false, error: "" }
 
     await loadChannelPermission(activeServer.id, activeChannel)
-    if (requestId !== state.sessionRequestId) return
+    if (requestId !== state.sessionRequestId) return { ok: false, error: "" }
 
     try {
       const members = await fetchMembersForServer(activeServer.id)
-      if (requestId !== state.sessionRequestId) return
+      if (requestId !== state.sessionRequestId) return { ok: false, error: "" }
       setMembers(members)
     } catch {
       setMembers([])
     }
 
-    try {
-      const logs = await fetchAuditLogsForServer(activeServer.id)
-      if (requestId !== state.sessionRequestId) return
-      setAuditLogs(logs)
-    } catch {
-      setAuditLogs([])
-    }
+    setAuditLogs([])
 
     messages.innerHTML = ""
     const historyMessages = Array.isArray(joinResult.history) ? joinResult.history : []
@@ -160,17 +160,20 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
     if (typeof onReady === "function") {
       onReady()
     }
+    return { ok: true }
   } catch (error) {
-    if (requestId !== state.sessionRequestId) return
+    if (requestId !== state.sessionRequestId) return { ok: false, error: "" }
     state.isSessionReady = false
     setStatus("Join failed", false)
+    const errorMessage = error.message || "Gagal join channel"
     if (showAlertOnFailure) {
-      notify(error.message || "Gagal join channel")
+      notify(errorMessage)
     }
     clearRolePanels()
     permMemberView.checked = true
     permMemberSend.checked = true
     updateChannelActionState()
+    return { ok: false, error: errorMessage }
   }
 }
 

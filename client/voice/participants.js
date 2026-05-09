@@ -1,21 +1,27 @@
 import { socket } from "../socket.js"
-import { voiceState } from "./state.js"
+import { voiceState, resetVoiceStageState } from "./state.js"
 
 function resetParticipants({ preserveSpeaking = false } = {}) {
   voiceState.participants.clear()
-  voiceState.tileEls.clear()
+  resetVoiceStageState()
   if (!preserveSpeaking) {
     voiceState.speakingState.clear()
   }
 }
 
-function upsertParticipant(id, username, { isSelf = false, isMuted = false } = {}) {
+function upsertParticipant(
+  id,
+  username,
+  { isSelf = false, isMuted = false, isCameraEnabled = false, isScreenSharing = false } = {}
+) {
   if (!id) return
   voiceState.participants.set(id, {
     id,
     username: username || "Unknown",
     isSelf: Boolean(isSelf),
-    isMuted: Boolean(isMuted)
+    isMuted: Boolean(isMuted),
+    isCameraEnabled: Boolean(isCameraEnabled),
+    isScreenSharing: Boolean(isScreenSharing)
   })
 }
 
@@ -35,6 +41,20 @@ function setParticipantMuted(id, isMuted) {
   }
 }
 
+function setParticipantCameraEnabled(id, isCameraEnabled) {
+  const entry = voiceState.participants.get(id)
+  if (!entry) return
+  entry.isCameraEnabled = Boolean(isCameraEnabled)
+  voiceState.participants.set(id, entry)
+}
+
+function setParticipantScreenSharing(id, isScreenSharing) {
+  const entry = voiceState.participants.get(id)
+  if (!entry) return
+  entry.isScreenSharing = Boolean(isScreenSharing)
+  voiceState.participants.set(id, entry)
+}
+
 function updateSelfTileState() {
   const tile = voiceState.tileEls.get(socket.id)
   if (!tile) return
@@ -48,5 +68,7 @@ export {
   upsertParticipant,
   removeParticipant,
   setParticipantMuted,
+  setParticipantCameraEnabled,
+  setParticipantScreenSharing,
   updateSelfTileState
 }

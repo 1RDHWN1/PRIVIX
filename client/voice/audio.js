@@ -1,10 +1,13 @@
 import { notify } from "../notice.js"
 import { voiceState } from "./state.js"
+import { updateVoiceUi } from "./ui.js"
 
 function ensureAudioContext() {
   if (voiceState.audioContext) {
     if (voiceState.audioContext.state === "suspended") {
-      voiceState.audioContext.resume().catch(() => {})
+      voiceState.audioContext.resume().then(() => {
+        voiceState.audioPlaybackPromptShown = false
+      }).catch(() => {})
     }
     return voiceState.audioContext
   }
@@ -12,6 +15,7 @@ function ensureAudioContext() {
   if (!AudioCtx) return null
   try {
     voiceState.audioContext = new AudioCtx()
+    voiceState.audioPlaybackPromptShown = false
     return voiceState.audioContext
   } catch {
     return null
@@ -21,10 +25,22 @@ function ensureAudioContext() {
 function attemptPlayAudio(el) {
   if (!el || typeof el.play !== "function") return
   const playPromise = el.play()
+  if (playPromise && typeof playPromise.then === "function") {
+    playPromise.then(() => {
+      voiceState.audioPlaybackPromptShown = false
+    }).catch(() => {
+      if (!voiceState.audioPlaybackPromptShown) {
+        voiceState.audioPlaybackPromptShown = true
+        notify("Klik area aplikasi untuk mengaktifkan audio voice.")
+      }
+    })
+    return
+  }
   if (playPromise && typeof playPromise.catch === "function") {
     playPromise.catch(() => {
-      if (!voiceState.iceFailureNotified) {
-        notify("Klik Join Voice untuk mengaktifkan audio.")
+      if (!voiceState.audioPlaybackPromptShown) {
+        voiceState.audioPlaybackPromptShown = true
+        notify("Klik area aplikasi untuk mengaktifkan audio voice.")
       }
     })
   }
@@ -84,10 +100,24 @@ function setSpeakingState(peerId, isSpeaking) {
     tile.classList.toggle("is-speaking", Boolean(isSpeaking))
   }
   applySidebarSpeakingState(peerId, isSpeaking)
+  if (voiceState.stageLayoutMode === "focus") {
+    updateVoiceUi()
+  }
+}
+
+function applySpeakingVisualLevel(peerId, level) {
+  const tile = voiceState.tileEls.get(peerId)
+  if (!tile) return
+  const safe = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0
+  tile.style.setProperty("--voice-speaking-level", safe.toFixed(3))
 }
 
 function startSpeakingLoop() {
   if (voiceState.analyserLoopId) return
+  const ATTACK_THRESHOLD = 7.4
+  const RELEASE_THRESHOLD = 4.8
+  const RELEASE_HOLD_FRAMES = 7
+  const SMOOTHING_ALPHA = 0.24
   const loop = () => {
     voiceState.analyserLoopId = requestAnimationFrame(loop)
     if (voiceState.analysers.size === 0) {
@@ -103,10 +133,37 @@ function startSpeakingLoop() {
         sum += Math.abs(v)
       }
       const avg = sum / entry.data.length
-      const speaking = avg > 6
+      const previousSmoothed = Number(entry.smoothedLevel) || 0
+      const smoothed = previousSmoothed + (avg - previousSmoothed) * SMOOTHING_ALPHA
+      entry.smoothedLevel = smoothed
+
+      let speaking = Boolean(entry.speaking)
+      if (speaking) {
+        if (smoothed < RELEASE_THRESHOLD) {
+          entry.releaseHoldFrames = Math.max(0, Number(entry.releaseHoldFrames || 0) - 1)
+          if (entry.releaseHoldFrames <= 0) {
+            speaking = false
+          }
+        } else {
+          entry.releaseHoldFrames = RELEASE_HOLD_FRAMES
+        }
+      } else if (smoothed > ATTACK_THRESHOLD) {
+        speaking = true
+        entry.releaseHoldFrames = RELEASE_HOLD_FRAMES
+      }
+
+      const visualLevel = Math.min(1, smoothed / 18)
+      if (!Number.isFinite(entry.lastVisualLevel) || Math.abs(visualLevel - entry.lastVisualLevel) >= 0.04) {
+        entry.lastVisualLevel = visualLevel
+        applySpeakingVisualLevel(peerId, visualLevel)
+      }
+
       if (entry.speaking !== speaking) {
         entry.speaking = speaking
         setSpeakingState(peerId, speaking)
+        if (!speaking) {
+          applySpeakingVisualLevel(peerId, 0)
+        }
       }
     })
   }
@@ -132,7 +189,16 @@ function attachAnalyser(peerId, stream) {
     analyser.smoothingTimeConstant = 0.85
     source.connect(analyser)
     const data = new Uint8Array(analyser.fftSize)
-    voiceState.analysers.set(peerId, { analyser, data, source, speaking: false })
+    voiceState.analysers.set(peerId, {
+      analyser,
+      data,
+      source,
+      speaking: false,
+      smoothedLevel: 0,
+      releaseHoldFrames: 0,
+      lastVisualLevel: 0
+    })
+    applySpeakingVisualLevel(peerId, 0)
     startSpeakingLoop()
   } catch {}
 }
@@ -144,6 +210,8 @@ function removeAnalyser(peerId) {
       entry.source.disconnect()
     } catch {}
   }
+  applySpeakingVisualLevel(peerId, 0)
+  setSpeakingState(peerId, false)
   voiceState.analysers.delete(peerId)
   voiceState.speakingState.delete(peerId)
 }
@@ -157,4 +225,3 @@ export {
   startSpeakingLoop,
   stopSpeakingLoop
 }
-

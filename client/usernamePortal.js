@@ -38,7 +38,7 @@ async function handleSubmit() {
   const originalText = usernamePortalBtn.textContent
   usernamePortalBtn.textContent = "Loading..."
 
-  await startSessionForSelectedChannel(true, () => {
+  const result = await startSessionForSelectedChannel(true, () => {
     hidePortal()
   })
 
@@ -48,6 +48,7 @@ async function handleSubmit() {
     } catch {}
     hidePortal()
   } else {
+    setError((result && result.error) || "Gagal masuk. Coba username lain.")
     usernamePortalBtn.disabled = false
     usernamePortalBtn.textContent = originalText
   }

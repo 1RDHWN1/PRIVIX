@@ -4,6 +4,7 @@ import {
   serverSelect,
   channelSelect,
   activeServerName,
+  activeServerSubtitle,
   activeChannelName,
   activeChannelType,
   chatRoot,
@@ -137,7 +138,7 @@ function updateChannelActionState() {
 
   setElementHidden(sectionChannels, !hasServer)
   setElementHidden(sectionMembers, !hasServer)
-  setElementHidden(sectionAudit, !hasServer)
+  setElementHidden(sectionAudit, true)
   setElementHidden(rowServerLeave, !hasServer)
   setElementHidden(rowTransferOwner, !hasServer || !canTransferOwner)
   setElementHidden(rowInviteActions, !hasServer || !canGetInvite)
@@ -188,8 +189,8 @@ function updateChannelActionState() {
   unmuteBtn.disabled = !socket.connected || !canMuteMembers
   savePermBtn.disabled = !socket.connected || !canSetChannelPerm || !hasChannel
   memberFilterInput.disabled = !hasServer
-  auditFilterSelect.disabled = !hasServer
-  auditSearchInput.disabled = !hasServer
+  auditFilterSelect.disabled = true
+  auditSearchInput.disabled = true
   memberUsernameInput.disabled = !socket.connected || (!canManageRoles && !canMuteMembers && !canKickMembers)
   muteDurationSelect.disabled = !socket.connected || !canMuteMembers
   muteReasonInput.disabled = !socket.connected || !canMuteMembers
@@ -216,20 +217,30 @@ function updateChannelActionState() {
   }
 
   if (activeServerName) {
-    activeServerName.textContent = activeServer ? activeServer.name : "No Server"
+    activeServerName.textContent = activeServer ? activeServer.name : "Belum Ada Server"
+  }
+  if (activeServerSubtitle) {
+    activeServerSubtitle.textContent = activeServer ? "Community" : "Buat server atau masuk via invite"
   }
   if (activeChannelName) {
-    if (activeChannel) {
+    if (!hasServer) {
+      activeChannelName.textContent = "Mulai Privix"
+    } else if (activeChannel) {
       activeChannelName.textContent = isVoiceChannel ? `voice ${activeChannel}` : `# ${activeChannel}`
     } else {
-      activeChannelName.textContent = "# channel"
+      activeChannelName.textContent = "Pilih channel"
     }
   }
   if (activeChannelType) {
-    activeChannelType.textContent = isVoiceChannel ? "voice" : "text"
+    activeChannelType.textContent = hasServer ? (isVoiceChannel ? "voice" : "text") : ""
   }
   if (chatRoot) {
     chatRoot.classList.toggle("is-voice", Boolean(isVoiceChannel))
+    chatRoot.classList.toggle("is-no-server", !hasServer)
+  }
+  const appRoot = document.querySelector(".app")
+  if (appRoot) {
+    appRoot.classList.toggle("is-no-server", !hasServer)
   }
 
   const canSpeak =

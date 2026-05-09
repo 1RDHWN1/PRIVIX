@@ -15,9 +15,10 @@ function renderAuditLogs(logs) {
 
     logs.forEach((row) => {
       const line = document.createElement("div")
-      line.className = "list-row"
+      line.className = "list-row audit-row"
       const when = formatTime(row.created_at)
       const actor = row.actor_username || "unknown"
+      const category = getAuditLogCategory(row.action_type)
       let label = row.action_type || "action"
       try {
         if (row.details) {
@@ -41,7 +42,36 @@ function renderAuditLogs(logs) {
           if (row.action_type === "member_unmuted" && d.target_username) label = `unmute ${d.target_username}`
         }
       } catch {}
-      line.textContent = `${when ? `[${when}] ` : ""}${actor}: ${label}`
+
+      const meta = document.createElement("div")
+      meta.className = "audit-row-meta"
+
+      const stamp = document.createElement("small")
+      stamp.className = "audit-row-time"
+      stamp.textContent = when || "-"
+
+      const tag = document.createElement("span")
+      tag.className = "audit-row-category"
+      tag.dataset.category = category
+      tag.textContent = category
+
+      const body = document.createElement("div")
+      body.className = "audit-row-body"
+
+      const title = document.createElement("div")
+      title.className = "audit-row-title"
+      title.textContent = label
+
+      const actorText = document.createElement("div")
+      actorText.className = "audit-row-actor"
+      actorText.textContent = actor
+
+      meta.appendChild(stamp)
+      meta.appendChild(tag)
+      body.appendChild(title)
+      body.appendChild(actorText)
+      line.appendChild(meta)
+      line.appendChild(body)
       fragment.appendChild(line)
     })
   })

@@ -19,6 +19,8 @@ if (-not $envFile) {
   exit 1
 }
 
+$loaded = @{}
+
 Get-Content $envFile | ForEach-Object {
   $line = $_.Trim()
   if ($line.Length -eq 0) { return }
@@ -29,6 +31,23 @@ Get-Content $envFile | ForEach-Object {
   $value = $pair[1].Trim()
   if ($name.Length -eq 0) { return }
   [Environment]::SetEnvironmentVariable($name, $value, "Process")
+  $loaded[$name] = $value
+}
+
+$hasPgParts =
+  $loaded.ContainsKey("PGHOST") -or
+  $loaded.ContainsKey("PGPORT") -or
+  $loaded.ContainsKey("PGDATABASE") -or
+  $loaded.ContainsKey("PGUSER") -or
+  $loaded.ContainsKey("PGPASSWORD")
+
+$hasExplicitUrl =
+  $loaded.ContainsKey("DATABASE_URL") -or
+  $loaded.ContainsKey("PRIVIX_DATABASE_URL")
+
+if ($hasPgParts -and -not $hasExplicitUrl) {
+  [Environment]::SetEnvironmentVariable("DATABASE_URL", $null, "Process")
+  [Environment]::SetEnvironmentVariable("PRIVIX_DATABASE_URL", $null, "Process")
 }
 
 npm start

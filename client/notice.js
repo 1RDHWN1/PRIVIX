@@ -25,9 +25,15 @@ function notify(message, type = "info", options = {}) {
     previousCloseHandler()
   }
 
+  const rawTitle = options && options.title
   const title =
-    String(options && options.title) ||
-    (type === "success" ? "Success" : type === "error" ? "Error" : "Info")
+    typeof rawTitle === "string" && rawTitle.trim()
+      ? rawTitle.trim()
+      : type === "success"
+      ? "Success"
+      : type === "error"
+      ? "Error"
+      : "Info"
   noticeTitle.textContent = title
   noticeMessage.textContent = message
   noticeCard.className = `notice-card ${type}`
@@ -49,6 +55,23 @@ function notify(message, type = "info", options = {}) {
 
   noticeBackdrop.classList.add("show")
   noticeBackdrop.setAttribute("aria-hidden", "false")
+}
+
+function getErrorMessage(error, fallback = "Terjadi kesalahan") {
+  if (error && typeof error.message === "string" && error.message.trim()) {
+    return error.message.trim()
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error.trim()
+  }
+  return fallback
+}
+
+function notifyError(error, fallback = "Terjadi kesalahan", options = {}) {
+  notify(getErrorMessage(error, fallback), "error", {
+    title: "Error",
+    ...options
+  })
 }
 
 function closeNotice(invokeCloseHandler = true) {
@@ -126,4 +149,4 @@ function wireNoticeEvents() {
   })
 }
 
-export { setStatus, notify, closeNotice, confirmNotice, wireNoticeEvents }
+export { setStatus, notify, notifyError, closeNotice, confirmNotice, getErrorMessage, wireNoticeEvents }

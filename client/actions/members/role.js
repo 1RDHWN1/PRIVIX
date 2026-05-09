@@ -1,6 +1,6 @@
 import { memberUsernameInput, channelSelect } from "../../dom.js"
 import { socket } from "../../socket.js"
-import { notify, setStatus } from "../../notice.js"
+import { confirmNotice, notify, notifyError, setStatus } from "../../notice.js"
 import { buildConnectedStatus } from "../../permissions.js"
 import { emitWithTimeout, fetchMembersForServer, fetchAuditLogsForServer } from "../../api.js"
 import { getActiveServer } from "../../session.js"
@@ -24,6 +24,16 @@ async function handleSetMemberRole(role, targetOverride = "") {
     return
   }
 
+  const confirmed = await confirmNotice(
+    `Ubah role "${targetUsername}" menjadi ${role} di server "${activeServer.name}"?`,
+    {
+      title: "Ubah Role Member",
+      confirmLabel: "Ubah Role",
+      cancelLabel: "Batal"
+    }
+  )
+  if (!confirmed) return
+
   try {
     setStatus("Updating member role...", false)
     await emitWithTimeout(
@@ -43,7 +53,7 @@ async function handleSetMemberRole(role, targetOverride = "") {
     setStatus(buildConnectedStatus(activeServer, channelSelect.value), true)
   } catch (error) {
     setStatus("Update role failed", false)
-    notify(error.message || "Gagal update role")
+    notifyError(error, "Gagal update role")
   }
 }
 

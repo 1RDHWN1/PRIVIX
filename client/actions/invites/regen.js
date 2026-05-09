@@ -1,6 +1,6 @@
 import { channelSelect } from "../../dom.js"
 import { socket } from "../../socket.js"
-import { notify, setStatus } from "../../notice.js"
+import { confirmNotice, notify, notifyError, setStatus } from "../../notice.js"
 import { setInvitePreview } from "../../ui.js"
 import { buildConnectedStatus } from "../../permissions.js"
 import { emitWithTimeout, fetchAuditLogsForServer } from "../../api.js"
@@ -17,6 +17,17 @@ async function handleRegenInvite() {
     notify("Server belum terhubung")
     return
   }
+
+  const confirmed = await confirmNotice(
+    `Regenerate invite untuk server "${activeServer.name}"? Link invite lama tidak bisa dipakai lagi.`,
+    {
+      title: "Regenerate Invite",
+      confirmLabel: "Regenerate",
+      cancelLabel: "Batal",
+      type: "error"
+    }
+  )
+  if (!confirmed) return
 
   try {
     setStatus("Regenerating invite...", false)
@@ -38,7 +49,7 @@ async function handleRegenInvite() {
     notify("Invite code berhasil di-regenerate", "success")
   } catch (error) {
     setStatus("Regenerate invite failed", false)
-    notify(error.message || "Gagal regenerate invite", "error")
+    notifyError(error, "Gagal regenerate invite")
   }
 }
 

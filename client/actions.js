@@ -1,6 +1,12 @@
 export { handleCreateChannel, handleDeleteChannel, handleRenameChannel } from "./actions/channels.js"
 export { handleJoinInvite, handleGetInvite, handleRegenInvite } from "./actions/invites.js"
-export { handleCreateServer, handleRenameServer, handleTransferOwner, handleLeaveServer } from "./actions/servers.js"
+export {
+  handleCreateServer,
+  handleDeleteServer,
+  handleRenameServer,
+  handleTransferOwner,
+  handleLeaveServer
+} from "./actions/servers.js"
 export { handleSetMemberRole, handleKickMember, handleMuteMember, handleUnmuteMember } from "./actions/members.js"
 export { handleSaveChannelPermission } from "./actions/permissions.js"
 export { send } from "./actions/messages.js"

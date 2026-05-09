@@ -8,20 +8,20 @@ import { emitWithTimeout, fetchAuditLogsForServer } from "../../api.js"
 import { getActiveServer } from "../../session.js"
 import { setAuditLogs } from "../../audit.js"
 
-async function handleRenameServer() {
+async function handleRenameServer(nameOverride = "") {
   const activeServer = getActiveServer()
-  const newServerName = serverNameInput.value.trim()
+  const newServerName = String(nameOverride || serverNameInput.value || "").trim()
   if (!activeServer) {
     notify("Pilih server dulu")
-    return
+    return false
   }
   if (!newServerName) {
     notify("Masukkan nama server baru dulu")
-    return
+    return false
   }
   if (!socket.connected) {
     notify("Server belum terhubung")
-    return
+    return false
   }
 
   try {
@@ -48,9 +48,11 @@ async function handleRenameServer() {
     setAuditLogs(logs)
     setStatus(buildConnectedStatus(activeServer, channelSelect.value), true)
     notify("Server berhasil di-rename", "success")
+    return true
   } catch (error) {
     setStatus("Rename server failed", false)
     notify(error.message || "Gagal rename server", "error")
+    return false
   }
 }
 

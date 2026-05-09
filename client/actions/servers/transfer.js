@@ -7,20 +7,20 @@ import { getActiveServer, updateChannelActionState } from "../../session.js"
 import { setMembers } from "../../members.js"
 import { setAuditLogs } from "../../audit.js"
 
-async function handleTransferOwner() {
+async function handleTransferOwner(usernameOverride = "") {
   const activeServer = getActiveServer()
-  const targetUsername = ownerUsernameInput.value.trim()
+  const targetUsername = String(usernameOverride || ownerUsernameInput.value || "").trim()
   if (!activeServer) {
     notify("Pilih server dulu")
-    return
+    return false
   }
   if (!targetUsername) {
     notify("Masukkan username owner baru dulu")
-    return
+    return false
   }
   if (!socket.connected) {
     notify("Server belum terhubung")
-    return
+    return false
   }
 
   const confirmed = await confirmNotice(
@@ -32,7 +32,7 @@ async function handleTransferOwner() {
       cancelLabel: "Cancel"
     }
   )
-  if (!confirmed) return
+  if (!confirmed) return false
 
   try {
     setStatus("Transferring owner...", false)
@@ -58,9 +58,11 @@ async function handleTransferOwner() {
     setStatus(buildConnectedStatus(activeServer, channelSelect.value), true)
     updateChannelActionState()
     notify("Owner server berhasil dipindahkan", "success")
+    return true
   } catch (error) {
     setStatus("Transfer owner failed", false)
     notify(error.message || "Gagal transfer owner server", "error")
+    return false
   }
 }
 

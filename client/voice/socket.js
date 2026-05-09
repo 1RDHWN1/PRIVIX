@@ -1,14 +1,20 @@
 import { socket } from "../socket.js"
-import { voiceAutoJoinToggle } from "../dom.js"
 import { voiceState } from "./state.js"
 import { playNotificationTone } from "./audio.js"
 import { applyPresence, setChannelVoicePresence } from "./presence.js"
-import { upsertParticipant, removeParticipant, setParticipantMuted } from "./participants.js"
+import {
+  upsertParticipant,
+  removeParticipant,
+  setParticipantMuted,
+  setParticipantCameraEnabled,
+  setParticipantScreenSharing
+} from "./participants.js"
 import { updateVoiceUi } from "./ui.js"
-import { initAutoJoinPreference, setAutoJoinPreference } from "./actions.js"
 import { ensurePeerConnection, handleVoiceSignal, removePeer } from "./rtc.js"
 import { initVoiceSettings } from "./settings.js"
 import { initPushToTalk } from "./ptt.js"
+import { voiceDebug } from "./debug.js"
+import { applySfuRemoteStreamState } from "./sfu.js"
 
 function syncRoomStartedAtTs(rawValue) {
   const ts = Number(rawValue || 0)
@@ -24,16 +30,21 @@ function syncServerClock(rawValue) {
 }
 
 function bindVoiceSocketHandlers() {
-  initAutoJoinPreference()
   initVoiceSettings()
   initPushToTalk()
-  if (voiceAutoJoinToggle) {
-    voiceAutoJoinToggle.addEventListener("change", () => {
-      setAutoJoinPreference(voiceAutoJoinToggle.checked, { triggerJoin: true })
-    })
-  }
 
   socket.on("voice signal", (payload) => {
+    voiceDebug("socket event: voice signal", {
+      fromId: payload && payload.from_id,
+      type:
+        payload && payload.data && payload.data.type
+          ? payload.data.type
+          : payload && payload.data && payload.data.candidate
+            ? "candidate"
+            : payload && payload.data && payload.data.restart
+              ? "restart"
+              : "unknown"
+    })
     handleVoiceSignal(payload).catch(() => {})
   })
 
@@ -41,14 +52,28 @@ function bindVoiceSocketHandlers() {
     const peerId = payload && payload.id
     const username = payload && payload.username
     const isMuted = Boolean(payload && payload.is_muted)
+    const isCameraEnabled = Boolean(payload && payload.is_camera_enabled)
+    const isScreenSharing = Boolean(payload && payload.is_screen_sharing)
     if (!peerId || peerId === socket.id) return
     syncServerClock(payload && payload.server_now_ts)
     syncRoomStartedAtTs(payload && payload.room_started_at_ts)
-    upsertParticipant(peerId, username || "Unknown", { isSelf: false, isMuted })
+    upsertParticipant(peerId, username || "Unknown", {
+      isSelf: false,
+      isMuted,
+      isCameraEnabled,
+      isScreenSharing
+    })
     if (voiceState.isJoined) {
       ensurePeerConnection(peerId, { isInitiator: false }).catch(() => {})
       playNotificationTone("join")
     }
+    voiceDebug("socket event: voice user joined", {
+      peerId,
+      username: username || "Unknown",
+      isMuted,
+      isCameraEnabled,
+      isScreenSharing
+    })
     updateVoiceUi()
   })
 
@@ -99,6 +124,40 @@ function bindVoiceSocketHandlers() {
     if (!peerId) return
     const isMuted = Boolean(payload && payload.is_muted)
     setParticipantMuted(peerId, isMuted)
+    voiceDebug("socket event: voice mute state", { peerId, isMuted })
+    updateVoiceUi()
+  })
+
+  socket.on("voice camera state", (payload) => {
+    const peerId = payload && payload.id
+    if (!peerId) return
+    const isCameraEnabled = Boolean(payload && payload.is_camera_enabled)
+    setParticipantCameraEnabled(peerId, isCameraEnabled)
+    voiceDebug("socket event: voice camera state", { peerId, isCameraEnabled })
+    updateVoiceUi()
+  })
+
+  socket.on("voice screen state", (payload) => {
+    const peerId = payload && payload.id
+    if (!peerId) return
+    const isScreenSharing = Boolean(payload && payload.is_screen_sharing)
+    setParticipantScreenSharing(peerId, isScreenSharing)
+    voiceDebug("socket event: voice screen state", { peerId, isScreenSharing })
+    updateVoiceUi()
+  })
+
+  socket.on("voice stream state", (payload) => {
+    const peerId = payload && payload.id
+    if (!peerId) return
+    const source = String(payload && payload.source ? payload.source : "")
+    const isActive = Boolean(payload && payload.is_active)
+    applySfuRemoteStreamState(peerId, source, isActive)
+    if (source === "camera") {
+      setParticipantCameraEnabled(peerId, isActive)
+    } else if (source === "screen") {
+      setParticipantScreenSharing(peerId, isActive)
+    }
+    voiceDebug("socket event: voice stream state", { peerId, source, isActive })
     updateVoiceUi()
   })
 }

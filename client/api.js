@@ -1,4 +1,5 @@
 import { socket } from "./socket.js"
+import { appDebug } from "./debug.js"
 
 const membersFetchInflight = new Map()
 const membersFetchCache = new Map()
@@ -13,13 +14,16 @@ function emitWithTimeout(event, payload, options = {}) {
   return new Promise((resolve, reject) => {
     const handler = (err, res) => {
       if (err) {
+        appDebug("socket", "emit timeout", { event, timeoutMs })
         reject(new Error(timeoutMessage))
         return
       }
       if (expectsOk && (!res || !res.ok)) {
+        appDebug("socket", "emit rejected", { event, error: res && res.error })
         reject(new Error((res && res.error) || failMessage))
         return
       }
+      appDebug("socket", "emit ok", { event })
       resolve(res)
     }
 
@@ -94,8 +98,8 @@ function fetchServersWithTimeout() {
   }).then((res) => res.servers || [])
 }
 
-function setUsernameWithTimeout(nextUsername) {
-  return emitWithTimeout("set username", nextUsername, {
+function setUsernameWithTimeout(nextUsername, authToken = "") {
+  return emitWithTimeout("set username", { username: nextUsername, auth_token: authToken }, {
     timeoutMessage: "Server tidak merespons saat set username",
     failMessage: "Gagal set username"
   })

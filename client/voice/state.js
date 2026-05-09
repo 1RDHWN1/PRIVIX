@@ -1,5 +1,3 @@
-const AUTO_JOIN_KEY = "voice:auto_join"
-
 const voiceState = {
   selfId: "",
   isVoiceChannel: false,
@@ -14,9 +12,15 @@ const voiceState = {
   serverClockOffsetMs: 0,
   isConnecting: false,
   isMuted: false,
-  autoJoinEnabled: false,
+  isCameraEnabled: false,
+  isCameraBusy: false,
+  isScreenSharing: false,
+  isScreenShareBusy: false,
+  restoreCameraAfterJoin: false,
+  restoreCameraAfterScreenShare: false,
   manualLeave: false,
   iceFailureNotified: false,
+  audioPlaybackPromptShown: false,
   outputDeviceFailureNotified: false,
   audioContext: null,
   analyserLoopId: 0,
@@ -28,14 +32,32 @@ const voiceState = {
   analysers: new Map(),
   speakingState: new Map(),
   tileEls: new Map(),
+  stageLayoutMode: "grid",
+  stageFocusId: "",
+  stageFocusLockUntil: 0,
+  expandedScreenShareId: "",
   rawStream: null,
   localStream: null,
+  localCameraStream: null,
+  localCameraTrack: null,
+  localScreenStream: null,
+  localScreenTrack: null,
   inputGainNode: null,
   inputSourceNode: null,
   inputDeviceId: "",
+  cameraDeviceId: "",
+  cameraFacingMode: "user",
+  preferCameraFacingMode: false,
+  cameraQualityMode: "auto",
+  cameraAppliedProfile: "balanced",
+  availableCameraCount: 0,
+  canFlipCamera: false,
+  lastCameraAutoTuneAt: 0,
+  isCameraQualityApplying: false,
   outputDeviceId: "",
   outputVolume: 0.8,
   inputGain: 1,
+  voiceMode: "mesh",
   pushToTalkEnabled: false,
   pushToTalkKey: "KeyV",
   pushToTalkActive: false,
@@ -53,7 +75,58 @@ const voiceState = {
     updatedAt: 0
   },
   audioEls: new Map(),
+  mediaStreams: new Map(),
+  mediaStreamsBySource: new Map(),
+  sfuRoom: null,
+  sfuLocalTracks: {
+    audio: null,
+    camera: null,
+    screen: null
+  },
+  sfuTrackBindings: new Map(),
+  sfuSdkModule: null,
+  sfuSdkPromise: null,
   participants: new Map()
 }
 
-export { AUTO_JOIN_KEY, voiceState }
+function resetVoiceStageState() {
+  voiceState.tileEls.clear()
+  voiceState.stageFocusId = ""
+  voiceState.stageFocusLockUntil = 0
+  voiceState.expandedScreenShareId = ""
+}
+
+function resetVoiceMediaCollections() {
+  voiceState.mediaStreams.clear()
+  voiceState.mediaStreamsBySource.clear()
+  voiceState.peerStats.clear()
+  voiceState.audioEls.forEach((audio) => {
+    try {
+      audio.pause()
+      audio.srcObject = null
+      audio.remove()
+    } catch {}
+  })
+  voiceState.audioEls.clear()
+}
+
+function resetVoiceTransientFlags() {
+  voiceState.isConnecting = false
+  voiceState.isJoined = false
+  voiceState.joinedAtTs = 0
+  voiceState.serverClockOffsetMs = 0
+  voiceState.isCameraBusy = false
+  voiceState.isScreenShareBusy = false
+  voiceState.isScreenSharing = false
+  voiceState.restoreCameraAfterScreenShare = false
+  voiceState.pushToTalkActive = false
+  voiceState.voiceMode = "mesh"
+  resetVoiceStageState()
+}
+
+export {
+  voiceState,
+  resetVoiceStageState,
+  resetVoiceMediaCollections,
+  resetVoiceTransientFlags
+}
