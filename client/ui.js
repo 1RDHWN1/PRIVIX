@@ -1,6 +1,18 @@
 export { focusInviteInput, setInvitePreview } from "./ui/invite.js"
 export { renderTypingIndicator } from "./ui/typing.js"
-export { renderMessage, renderNoServerEmptyState } from "./ui/messages.js"
+export {
+  renderMessage,
+  renderNoServerEmptyState,
+  updateMessageReactions,
+  deleteMessageFromView,
+  messageMentionsUser,
+  initMessageJumpControls,
+  resetMessageJumpState,
+  isMessageListNearBottom,
+  scrollMessageListToBottom,
+  trackUnreadMentionMessage,
+  syncChatJumpControls
+} from "./ui/messages.js"
 export {
   setServerOptions,
   setChannelOptions,

@@ -32,6 +32,7 @@ import {
   auditSearchInput,
   muteDurationSelect,
   muteReasonInput,
+  memberList,
   memberUsernameInput,
   usernameInput,
   messages,
@@ -45,6 +46,10 @@ import {
   serverContextMenuTitle,
   serverContextMenuSubtitle,
   serverContextMenuItems,
+  memberContextMenu,
+  memberContextMenuTitle,
+  memberContextMenuSubtitle,
+  memberContextMenuItems,
   voiceLeaveBtn,
   voiceMuteBtn,
   voiceCameraBtn,
@@ -58,6 +63,7 @@ import { notify } from "../notice.js"
 import {
   setInvitePreview,
   setChannelOptions,
+  resetMessageJumpState,
   syncServerListSelection,
   syncChannelListSelection
 } from "../ui.js"
@@ -95,6 +101,18 @@ import {
   resetTypingState
 } from "../typing.js"
 import {
+  closeMentionSuggestions,
+  handleMentionKeydown,
+  updateMentionSuggestions
+} from "../mentions.js"
+
+function autoResizeComposer() {
+  if (!msgInput) return
+  msgInput.style.height = "auto"
+  const nextHeight = Math.min(Math.max(msgInput.scrollHeight, 40), 140)
+  msgInput.style.height = `${nextHeight}px`
+}
+import {
   joinVoiceChannel,
   leaveVoiceChannel,
   toggleVoiceMute,
@@ -103,6 +121,7 @@ import {
   toggleVoiceCameraFacing,
   toggleVoiceStageLayoutMode
 } from "../voice.js"
+import { clearReplyDraft } from "../reply.js"
 
 let serverPromptConfirmLabel = "Create Server"
 let serverPromptEmptyMessage = "Masukkan nama server dulu"
@@ -115,6 +134,10 @@ function isCreateServerModalOpen() {
 
 function isServerContextMenuOpen() {
   return Boolean(serverContextMenu && serverContextMenu.classList.contains("show"))
+}
+
+function isMemberContextMenuOpen() {
+  return Boolean(memberContextMenu && memberContextMenu.classList.contains("show"))
 }
 
 function setCreateServerModalBusy(isBusy) {
@@ -155,6 +178,15 @@ function closeServerContextMenu() {
   serverContextMenu.style.left = "-9999px"
   serverContextMenu.style.top = "-9999px"
   delete serverContextMenu.dataset.serverId
+}
+
+function closeMemberContextMenu() {
+  if (!memberContextMenu) return
+  memberContextMenu.classList.remove("show")
+  memberContextMenu.setAttribute("aria-hidden", "true")
+  memberContextMenu.style.left = "-9999px"
+  memberContextMenu.style.top = "-9999px"
+  delete memberContextMenu.dataset.username
 }
 
 function openServerPromptModal({
@@ -291,8 +323,16 @@ function setServerContextMenuItemHidden(actionName, isHidden) {
   target.hidden = Boolean(isHidden)
 }
 
+function setMemberContextMenuItemHidden(actionName, isHidden) {
+  if (!Array.isArray(memberContextMenuItems)) return
+  const target = memberContextMenuItems.find((item) => item.dataset.memberMenuAction === actionName)
+  if (!target) return
+  target.hidden = Boolean(isHidden)
+}
+
 function openServerContextMenu(serverId, x, y) {
   if (!serverContextMenu) return
+  closeMemberContextMenu()
   selectServerById(serverId)
   const activeServer = getServerById(serverId) || getActiveServer()
   if (!activeServer) return
@@ -339,6 +379,67 @@ function openServerContextMenu(serverId, x, y) {
   serverContextMenu.style.top = `${top}px`
 }
 
+function openMemberContextMenu(memberRow, x, y) {
+  if (!memberContextMenu || !memberRow) return
+  closeServerContextMenu()
+
+  const username = String(memberRow.dataset.username || "").trim()
+  if (!username) return
+
+  const isSelf = memberRow.dataset.isSelf === "true"
+  const role = String(memberRow.dataset.role || "member").toLowerCase()
+  const isMuted = memberRow.dataset.isMuted === "true"
+  const canManageRoles = memberRow.dataset.canManageRoles === "true"
+  const canMuteMembers = memberRow.dataset.canMuteMembers === "true"
+  const canKickMembers = memberRow.dataset.canKickMembers === "true"
+
+  setMemberContextMenuItemHidden("admin", isSelf || !canManageRoles || role === "admin")
+  setMemberContextMenuItemHidden("mod", isSelf || !canManageRoles || role !== "member")
+  setMemberContextMenuItemHidden("member", isSelf || !canManageRoles || role === "member")
+  setMemberContextMenuItemHidden("kick", isSelf || !canKickMembers)
+  setMemberContextMenuItemHidden("mute", isSelf || !canMuteMembers || isMuted)
+  setMemberContextMenuItemHidden("unmute", isSelf || !canMuteMembers || !isMuted)
+
+  const visibleItems = memberContextMenuItems.filter((item) => !item.hidden)
+  if (visibleItems.length === 0) {
+    notify("Tidak ada aksi moderasi untuk member ini")
+    return
+  }
+
+  if (memberContextMenuTitle) {
+    memberContextMenuTitle.textContent = username
+  }
+  if (memberContextMenuSubtitle) {
+    memberContextMenuSubtitle.textContent = `Role: ${role}`
+  }
+
+  const menuDivider = memberContextMenu.querySelector(".context-menu-divider")
+  if (menuDivider) {
+    const hasRoleActions = ["admin", "mod", "member"].some((action) => {
+      const item = memberContextMenuItems.find((entry) => entry.dataset.memberMenuAction === action)
+      return item && !item.hidden
+    })
+    const hasModerationActions = ["kick", "mute", "unmute"].some((action) => {
+      const item = memberContextMenuItems.find((entry) => entry.dataset.memberMenuAction === action)
+      return item && !item.hidden
+    })
+    menuDivider.hidden = !hasRoleActions || !hasModerationActions
+  }
+
+  memberContextMenu.dataset.username = username
+  memberContextMenu.classList.add("show")
+  memberContextMenu.setAttribute("aria-hidden", "false")
+  memberContextMenu.style.left = "0px"
+  memberContextMenu.style.top = "0px"
+
+  const card = memberContextMenu.querySelector(".context-menu-card")
+  const cardRect = card ? card.getBoundingClientRect() : { width: 280, height: 260 }
+  const left = Math.max(12, Math.min(x, window.innerWidth - cardRect.width - 12))
+  const top = Math.max(12, Math.min(y, window.innerHeight - cardRect.height - 12))
+  memberContextMenu.style.left = `${left}px`
+  memberContextMenu.style.top = `${top}px`
+}
+
 async function copyActiveServerInviteLink() {
   await handleGetInvite()
   if (!state.inviteShareUrl) {
@@ -368,6 +469,7 @@ function bindUiHandlers() {
     }
     resetTypingState({ notifyServer: true })
     messages.innerHTML = ""
+    resetMessageJumpState()
     startSessionForSelectedChannel(true)
   })
 
@@ -376,6 +478,7 @@ function bindUiHandlers() {
     syncChannelListSelection()
     resetTypingState({ notifyServer: true })
     messages.innerHTML = ""
+    resetMessageJumpState()
     updateChannelActionState()
     startSessionForSelectedChannel(true)
   })
@@ -524,13 +627,23 @@ function bindUiHandlers() {
   })
 
   msgInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (handleMentionKeydown(e)) {
+      return
+    }
+    if (e.key === "Escape") {
+      closeMentionSuggestions()
+      clearReplyDraft()
+      return
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       send()
     }
   })
 
   msgInput.addEventListener("input", () => {
+    autoResizeComposer()
+    updateMentionSuggestions()
     if (!state.isSessionReady) {
       resetTypingState()
       return
@@ -548,9 +661,12 @@ function bindUiHandlers() {
   })
 
   msgInput.addEventListener("blur", () => {
+    closeMentionSuggestions()
     sendTypingState(false)
     stopTypingStateTimer()
   })
+
+  autoResizeComposer()
 
   channelNameInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -662,6 +778,51 @@ function bindUiHandlers() {
     renderMembers(getFilteredMembers())
   })
 
+  if (memberList) {
+    memberList.addEventListener("contextmenu", (e) => {
+      const target = e.target.closest(".member-item")
+      if (!target) return
+      e.preventDefault()
+      openMemberContextMenu(target, e.clientX, e.clientY)
+    })
+  }
+
+  if (memberContextMenu && Array.isArray(memberContextMenuItems)) {
+    memberContextMenuItems.forEach((item) => {
+      item.addEventListener("click", async (e) => {
+        e.preventDefault()
+        const actionName = item.dataset.memberMenuAction
+        const username = String(memberContextMenu.dataset.username || "")
+        closeMemberContextMenu()
+        if (!username) return
+
+        if (actionName === "admin") {
+          await handleSetMemberRole("admin", username)
+          return
+        }
+        if (actionName === "mod") {
+          await handleSetMemberRole("moderator", username)
+          return
+        }
+        if (actionName === "member") {
+          await handleSetMemberRole("member", username)
+          return
+        }
+        if (actionName === "kick") {
+          await handleKickMember(username)
+          return
+        }
+        if (actionName === "mute") {
+          await handleMuteMember(username, 10)
+          return
+        }
+        if (actionName === "unmute") {
+          await handleUnmuteMember(username)
+        }
+      })
+    })
+  }
+
   auditFilterSelect.addEventListener("change", () => {
     renderAuditLogs(getFilteredAuditLogs())
   })
@@ -718,10 +879,20 @@ function bindUiHandlers() {
     if (e.key === "Escape" && isServerContextMenuOpen()) {
       e.preventDefault()
       closeServerContextMenu()
+      return
+    }
+    if (e.key === "Escape" && isMemberContextMenuOpen()) {
+      e.preventDefault()
+      closeMemberContextMenu()
     }
   })
 
   document.addEventListener("click", (e) => {
+    if (isMemberContextMenuOpen()) {
+      if (memberContextMenu && memberContextMenu.contains(e.target)) return
+      if (e.target.closest(".member-item")) return
+      closeMemberContextMenu()
+    }
     if (!isServerContextMenuOpen()) return
     if (serverContextMenu && serverContextMenu.contains(e.target)) return
     if (e.target.closest(".server-item")) return
@@ -734,6 +905,9 @@ function bindUiHandlers() {
       if (isServerContextMenuOpen()) {
         closeServerContextMenu()
       }
+      if (isMemberContextMenuOpen()) {
+        closeMemberContextMenu()
+      }
     },
     true
   )
@@ -741,6 +915,9 @@ function bindUiHandlers() {
   window.addEventListener("resize", () => {
     if (isServerContextMenuOpen()) {
       closeServerContextMenu()
+    }
+    if (isMemberContextMenuOpen()) {
+      closeMemberContextMenu()
     }
   })
 

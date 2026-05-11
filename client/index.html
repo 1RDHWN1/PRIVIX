@@ -105,9 +105,22 @@
     </svg>
   </button>
   <div class="chat-channel">
-    <div id="active-channel-name" class="chat-channel-name"># channel</div>
+    <div class="chat-channel-main">
+      <div id="active-channel-name" class="chat-channel-name"># channel</div>
+      <div id="active-channel-presence" class="chat-channel-presence">Online 0/0</div>
+    </div>
     <div id="active-channel-type" class="chat-channel-type">text</div>
   </div>
+  <button class="mobile-search-btn" type="button" aria-label="Search messages">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M10.5 4a6.5 6.5 0 0 1 5.18 10.43l3.45 3.44a1 1 0 0 1-1.42 1.42l-3.44-3.45A6.5 6.5 0 1 1 10.5 4zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/>
+    </svg>
+  </button>
+  <button id="mobile-members-btn" class="mobile-members-btn" type="button" aria-label="Open members" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M8.5 11a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7zm7-1a3 3 0 1 1 0-6 3 3 0 0 1 0 6zM2.5 18.2c0-3.15 2.47-5.7 6-5.7s6 2.55 6 5.7c0 .72-.58 1.3-1.3 1.3H3.8c-.72 0-1.3-.58-1.3-1.3zm12.3 1.3c.45-.36.7-.91.7-1.53 0-1.75-.67-3.27-1.8-4.42.54-.2 1.16-.3 1.8-.3 3.18 0 5.2 2.18 5.2 4.94 0 .72-.58 1.31-1.3 1.31h-4.6z"/>
+    </svg>
+  </button>
   <div class="chat-header-actions">
     <div class="icon-pill">Members</div>
     <div class="icon-pill">Voice</div>
@@ -122,6 +135,28 @@
 </div>
 
 <div class="messages" id="messages"></div>
+<div id="chat-jump-controls" class="chat-jump-controls" hidden>
+  <button
+    id="chat-jump-to-mention-btn"
+    class="chat-jump-btn chat-jump-mention-btn"
+    type="button"
+    aria-label="Jump to unread mentions"
+    hidden
+  >
+    <span class="chat-jump-mention-at">@</span>
+    <span id="chat-jump-mention-count" class="chat-jump-badge" hidden>0</span>
+  </button>
+  <button
+    id="chat-jump-to-bottom-btn"
+    class="chat-jump-btn chat-jump-bottom-btn"
+    type="button"
+    aria-label="Jump to latest message"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M7.4 9.6a1 1 0 0 1 1.4 0L12 12.78l3.2-3.18a1 1 0 1 1 1.4 1.42l-3.9 3.88a1 1 0 0 1-1.4 0l-3.9-3.88a1 1 0 0 1 0-1.42z"/>
+    </svg>
+  </button>
+</div>
 <div id="typing-indicator" class="typing-indicator" aria-live="polite"></div>
 <div id="voice-panel" class="voice-panel collapsible-row">
   <div class="voice-panel-header">
@@ -301,8 +336,21 @@
 <div id="voice-audio" class="voice-audio" aria-hidden="true"></div>
 
 <div class="input">
-<input id="msg" class="field composer-input" placeholder="message"/>
-<button id="send-btn" type="button">Send</button>
+<div id="reply-draft" class="reply-draft" hidden>
+  <div class="reply-draft-meta">
+    <span class="reply-draft-label">Replying to</span>
+    <strong id="reply-draft-user" class="reply-draft-user"></strong>
+  </div>
+  <div id="reply-draft-text" class="reply-draft-text"></div>
+  <button id="reply-draft-cancel" class="reply-draft-cancel" type="button" aria-label="Cancel reply">×</button>
+</div>
+<div id="mention-suggest" class="mention-suggest" hidden></div>
+<textarea id="msg" class="field composer-input" placeholder="message" rows="1"></textarea>
+<button id="send-btn" type="button" aria-label="Send message">
+  <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="currentColor" d="M3.4 20.6l17.9-8.1c.95-.43.95-1.79 0-2.22L3.4 2.2c-.86-.39-1.77.34-1.61 1.27l1.1 6.36a1.4 1.4 0 0 0 1.37 1.16h7.12a1 1 0 1 1 0 2H4.26a1.4 1.4 0 0 0-1.37 1.16l-1.1 6.36c-.16.93.75 1.66 1.61 1.27z"/>
+  </svg>
+</button>
 </div>
 
 </div>
@@ -373,7 +421,38 @@
   </div>
   <div id="audit-list" class="member-list"></div>
   </div>
+
+  <div id="section-minigames" class="section collapsible-section minigames-section">
+    <div class="minigames-heading">
+      <div>
+        <h4>Minigames</h4>
+        <small>Main cepat langsung dari chat room.</small>
+      </div>
+      <span class="minigames-chip">beta</span>
+    </div>
+    <div class="minigames-grid">
+      <button class="minigame-card" type="button" data-minigame-command="/roll d20">
+        <span class="minigame-card-title">Dice Roll</span>
+        <span class="minigame-card-copy">Roll d20 buat keputusan cepat.</span>
+      </button>
+      <button class="minigame-card" type="button" data-minigame-command="/flip">
+        <span class="minigame-card-title">Coin Flip</span>
+        <span class="minigame-card-copy">Heads or tails, biar fair.</span>
+      </button>
+      <button class="minigame-card" type="button" data-minigame-command="/rps rock">
+        <span class="minigame-card-title">RPS</span>
+        <span class="minigame-card-copy">Rock, paper, scissors vs Privix.</span>
+      </button>
+      <button class="minigame-card" type="button" data-minigame-command="/guess 5">
+        <span class="minigame-card-title">Guess 1-10</span>
+        <span class="minigame-card-copy">Tebak angka random room.</span>
+      </button>
+    </div>
+    <small class="minigames-hint">Command: /roll, /flip, /rps paper, /guess 7, /games</small>
+  </div>
 </aside>
+
+<div id="mobile-members-backdrop" class="mobile-members-backdrop" aria-hidden="true"></div>
 
 </div>
 
@@ -430,6 +509,22 @@
     <div class="context-menu-divider"></div>
     <button class="context-menu-item is-danger" type="button" data-server-menu-action="delete">Delete Server</button>
     <button class="context-menu-item is-danger" type="button" data-server-menu-action="leave">Leave Server</button>
+  </div>
+</div>
+
+<div id="member-context-menu" class="context-menu" aria-hidden="true">
+  <div class="context-menu-card">
+    <div class="context-menu-header">
+      <div id="member-context-menu-title" class="context-menu-title">Member</div>
+      <div id="member-context-menu-subtitle" class="context-menu-subtitle">Moderation actions</div>
+    </div>
+    <button class="context-menu-item" type="button" data-member-menu-action="admin">Make Admin</button>
+    <button class="context-menu-item" type="button" data-member-menu-action="mod">Make Mod</button>
+    <button class="context-menu-item" type="button" data-member-menu-action="member">Make Member</button>
+    <div class="context-menu-divider"></div>
+    <button class="context-menu-item is-danger" type="button" data-member-menu-action="kick">Kick Member</button>
+    <button class="context-menu-item is-danger" type="button" data-member-menu-action="mute">Mute 10m</button>
+    <button class="context-menu-item" type="button" data-member-menu-action="unmute">Unmute</button>
   </div>
 </div>
 

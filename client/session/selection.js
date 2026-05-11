@@ -7,6 +7,7 @@ import {
   activeServerSubtitle,
   activeChannelName,
   activeChannelType,
+  activeChannelPresence,
   chatRoot,
   sectionChannels,
   sectionMembers,
@@ -233,6 +234,9 @@ function updateChannelActionState() {
   }
   if (activeChannelType) {
     activeChannelType.textContent = hasServer ? (isVoiceChannel ? "voice" : "text") : ""
+  }
+  if (activeChannelPresence && !hasServer) {
+    activeChannelPresence.textContent = ""
   }
   if (chatRoot) {
     chatRoot.classList.toggle("is-voice", Boolean(isVoiceChannel))

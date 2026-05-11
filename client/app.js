@@ -21,6 +21,10 @@ import { resetTypingState } from "./typing.js"
 import { bindVoiceSocketHandlers } from "./voice.js"
 import { initUsernamePortal } from "./usernamePortal.js"
 import { initMobileNav } from "./mobile.js"
+import { wireReplyDraftEvents } from "./reply.js"
+import { initMentionSuggestions } from "./mentions.js"
+import { initMessageJumpControls } from "./ui.js"
+import { initMiniGames } from "./minigames.js"
 
 state.username = localStorage.getItem(USERNAME_KEY) || ""
 usernameInput.value = state.username
@@ -49,6 +53,10 @@ bindSocketHandlers()
 bindVoiceSocketHandlers()
 initUsernamePortal()
 initMobileNav()
+wireReplyDraftEvents()
+initMentionSuggestions()
+initMessageJumpControls()
+initMiniGames()
 
 updateChannelActionState()
 resetTypingState()

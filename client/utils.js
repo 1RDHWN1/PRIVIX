@@ -1,11 +1,49 @@
-function formatTime(isoString) {
+function parseTimestamp(isoString) {
   if (!isoString) return ""
   const raw = String(isoString).trim()
   const sqliteUtcPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
   const normalized = sqliteUtcPattern.test(raw) ? `${raw.replace(" ", "T")}Z` : raw
   const date = new Date(normalized)
-  if (Number.isNaN(date.getTime())) return ""
+  if (Number.isNaN(date.getTime())) return null
+  return date
+}
+
+function formatTime(isoString) {
+  const date = parseTimestamp(isoString)
+  if (!date) return ""
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+}
+
+function getDateKey(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ""
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function getChatDateKey(isoString) {
+  const date = parseTimestamp(isoString)
+  return date ? getDateKey(date) : ""
+}
+
+function formatChatDateLabel(isoString) {
+  const date = parseTimestamp(isoString)
+  if (!date) return ""
+
+  const messageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.round((today.getTime() - messageDay.getTime()) / 86400000)
+
+  if (diffDays === 0) return "Hari ini"
+  if (diffDays === 1) return "Kemarin"
+
+  return date.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  })
 }
 
 function formatDurationLabel(totalMinutes) {
@@ -94,6 +132,8 @@ function getAuditLogCategory(actionType) {
 
 export {
   formatTime,
+  getChatDateKey,
+  formatChatDateLabel,
   formatDurationLabel,
   formatMuteRemaining,
   appendHighlightedText,

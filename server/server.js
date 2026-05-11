@@ -119,6 +119,118 @@ const io = new Server(server, {
   pingInterval: 25000,
   pingTimeout: 60000
 })
+
+const MESSAGE_REACTION_EMOJIS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"]
+const MESSAGE_REACTION_EMOJI_SET = new Set(MESSAGE_REACTION_EMOJIS)
+
+function normalizeReactionRows(rows) {
+  const grouped = new Map()
+  ;(rows || []).forEach((row) => {
+    const emoji = String(row && row.emoji || "")
+    const username = String(row && row.username || "")
+    if (!emoji || !username) return
+    if (!grouped.has(emoji)) {
+      grouped.set(emoji, new Set())
+    }
+    grouped.get(emoji).add(username)
+  })
+
+  return MESSAGE_REACTION_EMOJIS
+    .filter((emoji) => grouped.has(emoji))
+    .map((emoji) => {
+      const users = Array.from(grouped.get(emoji))
+      return {
+        emoji,
+        count: users.length,
+        users
+      }
+    })
+}
+
+async function getMessageReactions(messageId) {
+  const rows = await dbAll(
+    "SELECT emoji, username FROM message_reactions WHERE message_id = ? ORDER BY id ASC",
+    [messageId]
+  )
+  return normalizeReactionRows(rows)
+}
+
+async function attachReactionsToMessages(rows) {
+  const messages = Array.isArray(rows) ? rows : []
+  const messageIds = messages
+    .map((row) => Number(row && row.id))
+    .filter((id) => Number.isInteger(id) && id > 0)
+  if (messageIds.length === 0) return messages.map((row) => ({ ...row, reactions: [] }))
+
+  const placeholders = messageIds.map(() => "?").join(",")
+  const reactionRows = await dbAll(
+    `SELECT message_id, emoji, username FROM message_reactions WHERE message_id IN (${placeholders}) ORDER BY id ASC`,
+    messageIds
+  )
+  const reactionsByMessageId = new Map()
+  reactionRows.forEach((row) => {
+    const messageId = Number(row && row.message_id)
+    if (!Number.isInteger(messageId)) return
+    if (!reactionsByMessageId.has(messageId)) {
+      reactionsByMessageId.set(messageId, [])
+    }
+    reactionsByMessageId.get(messageId).push(row)
+  })
+
+  return messages.map((row) => ({
+    ...row,
+    reactions: normalizeReactionRows(reactionsByMessageId.get(Number(row.id)))
+  }))
+}
+
+async function attachReplyContextToMessages(rows) {
+  const messages = Array.isArray(rows) ? rows : []
+  const replyTargetIds = Array.from(
+    new Set(
+      messages
+        .map((row) => Number(row && row.reply_to_message_id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )
+  )
+  if (replyTargetIds.length === 0) {
+    return messages.map((row) => ({
+      ...row,
+      reply_to: null
+    }))
+  }
+
+  const placeholders = replyTargetIds.map(() => "?").join(",")
+  const replyRows = await dbAll(
+    `SELECT id, username, message FROM messages WHERE id IN (${placeholders})`,
+    replyTargetIds
+  )
+  const replyById = new Map()
+  ;(replyRows || []).forEach((row) => {
+    const id = Number(row && row.id)
+    if (!Number.isInteger(id) || id <= 0) return
+    replyById.set(id, row)
+  })
+
+  return messages.map((row) => {
+    const replyId = Number(row && row.reply_to_message_id)
+    const replyRow = Number.isInteger(replyId) ? replyById.get(replyId) : null
+    return {
+      ...row,
+      reply_to: replyRow
+        ? {
+            id: Number(replyRow.id),
+            username: String(replyRow.username || ""),
+            message: String(replyRow.message || "")
+          }
+        : null
+    }
+  })
+}
+
+async function enrichMessages(rows) {
+  const withReactions = await attachReactionsToMessages(rows)
+  return attachReplyContextToMessages(withReactions)
+}
 const VOICE_DEBUG =
   String(process.env.PRIVIX_VOICE_DEBUG || "").trim() === "1" ||
   String(process.env.VOICE_DEBUG || "").trim() === "1"
@@ -2322,9 +2434,10 @@ io.on("connection", (socket) => {
       const joinVersion = socket.data.joinVersion
 
       const rows = await dbAll(
-        "SELECT username, message, created_at FROM messages WHERE channel = ? ORDER BY id DESC LIMIT 20",
+        "SELECT id, username, message, created_at, reply_to_message_id FROM messages WHERE channel = ? ORDER BY id DESC LIMIT 20",
         [nextRoomKey]
       )
+      const historyRows = await enrichMessages(rows.reverse())
 
       if (socket.data.joinVersion !== joinVersion || socket.data.roomKey !== nextRoomKey) {
         reply({ ok: false, error: "Join channel dibatalkan" })
@@ -2335,7 +2448,7 @@ io.on("connection", (socket) => {
         ok: true,
         server_id: serverId,
         channel: channelName,
-        history: rows.reverse()
+        history: historyRows
       })
       if (Number.isInteger(previousServerId) && previousServerId > 0 && previousServerId !== serverId) {
         emitServerOnlineUsers(previousServerId).catch(() => {})
@@ -2380,10 +2493,11 @@ io.on("connection", (socket) => {
       socket.data.activeChannel = channelName
       socket.data.joinVersion += 1
       const rows = await dbAll(
-        "SELECT username, message, created_at FROM messages WHERE channel = ? ORDER BY id DESC LIMIT 20",
+        "SELECT id, username, message, created_at, reply_to_message_id FROM messages WHERE channel = ? ORDER BY id DESC LIMIT 20",
         [roomKey]
       )
-      reply({ ok: true, channel: channelName, history: rows.reverse() })
+      const historyRows = await enrichMessages(rows.reverse())
+      reply({ ok: true, channel: channelName, history: historyRows })
       if (Number.isInteger(previousServerId) && previousServerId > 0) {
         emitServerOnlineUsers(previousServerId).catch(() => {})
       }
@@ -2396,6 +2510,7 @@ io.on("connection", (socket) => {
     try {
       if (!data || typeof data.message !== "string") return
       const message = normalizeText(data.message)
+      const requestedReplyMessageId = Number(data.reply_to_message_id)
       const username = socket.data.username
       const roomKey = socket.data.roomKey
       const serverId = Number(socket.data.activeServerId)
@@ -2451,22 +2566,140 @@ io.on("connection", (socket) => {
         }
       }
 
+      let replyToMessageId = null
+      let replyToPayload = null
+      if (Number.isInteger(requestedReplyMessageId) && requestedReplyMessageId > 0) {
+        const replyRow = await dbGet(
+          "SELECT id, username, message FROM messages WHERE id = ? AND channel = ? LIMIT 1",
+          [requestedReplyMessageId, roomKey]
+        )
+        if (!replyRow) {
+          socket.emit("system error", { message: "Pesan reply tidak ditemukan" })
+          return
+        }
+        replyToMessageId = Number(replyRow.id)
+        replyToPayload = {
+          id: replyToMessageId,
+          username: String(replyRow.username || ""),
+          message: String(replyRow.message || "")
+        }
+      }
+
       const createdAt = new Date().toISOString()
-      await dbRun(
-        "INSERT INTO messages (username, channel, message, created_at) VALUES (?, ?, ?, ?)",
-        [username, roomKey, message, createdAt]
+      const created = await dbRun(
+        "INSERT INTO messages (username, channel, message, created_at, reply_to_message_id) VALUES (?, ?, ?, ?, ?)",
+        [username, roomKey, message, createdAt, replyToMessageId]
       )
+      const messageId = Number(created && created.lastID)
 
       io.to(roomKey).emit("chat message", {
+        id: messageId,
         username,
         message,
         created_at: createdAt,
+        reply_to_message_id: replyToMessageId,
+        reply_to: replyToPayload,
+        reactions: [],
         channel: socket.data.activeChannel,
         server_id: socket.data.activeServerId
       })
     } catch (error) {
       console.error("chat message error:", error)
       socket.emit("system error", { message: "Gagal menyimpan pesan" })
+    }
+  })
+
+  socket.on("message reaction", async (payload) => {
+    try {
+      const username = socket.data.username
+      const roomKey = socket.data.roomKey
+      const messageId = Number(payload && payload.message_id)
+      const emoji = String((payload && payload.emoji) || "").trim()
+
+      if (!username || !roomKey) return
+      if (!Number.isInteger(messageId) || messageId <= 0) return
+      if (!MESSAGE_REACTION_EMOJI_SET.has(emoji)) {
+        socket.emit("system error", { message: "Reaction tidak valid" })
+        return
+      }
+
+      const messageRow = await dbGet("SELECT id FROM messages WHERE id = ? AND channel = ? LIMIT 1", [
+        messageId,
+        roomKey
+      ])
+      if (!messageRow) {
+        socket.emit("system error", { message: "Pesan tidak ditemukan" })
+        return
+      }
+
+      const existingReaction = await dbGet(
+        "SELECT id, emoji FROM message_reactions WHERE message_id = ? AND username = ? ORDER BY id ASC LIMIT 1",
+        [messageId, username]
+      )
+      const currentEmoji = String(existingReaction && existingReaction.emoji || "")
+      const isSameEmoji = currentEmoji === emoji
+
+      await dbRun(
+        "DELETE FROM message_reactions WHERE message_id = ? AND username = ?",
+        [messageId, username]
+      )
+
+      if (!isSameEmoji) {
+        await dbRun(
+          "INSERT INTO message_reactions (message_id, username, emoji) VALUES (?, ?, ?)",
+          [messageId, username, emoji]
+        )
+      }
+
+      io.to(roomKey).emit("message reaction update", {
+        message_id: messageId,
+        reactions: await getMessageReactions(messageId)
+      })
+    } catch (error) {
+      console.error("message reaction error:", error)
+      socket.emit("system error", { message: "Gagal update reaction" })
+    }
+  })
+
+  socket.on("delete message", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const username = socket.data.username
+      const roomKey = socket.data.roomKey
+      const messageId = Number(payload && payload.message_id)
+
+      if (!username || !roomKey) {
+        reply({ ok: false, error: "Belum join channel" })
+        return
+      }
+      if (!Number.isInteger(messageId) || messageId <= 0) {
+        reply({ ok: false, error: "Pesan tidak valid" })
+        return
+      }
+
+      const messageRow = await dbGet(
+        "SELECT id, username FROM messages WHERE id = ? AND channel = ? LIMIT 1",
+        [messageId, roomKey]
+      )
+      if (!messageRow) {
+        reply({ ok: false, error: "Pesan tidak ditemukan" })
+        return
+      }
+      if (String(messageRow.username || "") !== String(username)) {
+        reply({ ok: false, error: "Kamu hanya bisa menghapus pesanmu sendiri" })
+        return
+      }
+
+      await dbRun("DELETE FROM messages WHERE id = ? AND channel = ?", [messageId, roomKey])
+      io.to(roomKey).emit("message deleted", {
+        message_id: messageId,
+        deleted_by: username
+      })
+      reply({ ok: true, message_id: messageId })
+    } catch (error) {
+      console.error("delete message error:", error)
+      reply({ ok: false, error: "Gagal menghapus pesan" })
+      socket.emit("system error", { message: "Gagal menghapus pesan" })
     }
   })
 

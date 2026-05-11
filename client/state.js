@@ -12,7 +12,10 @@ const state = {
   inviteAutoJoinAttempted: false,
   typingStopTimer: null,
   isTypingSent: false,
-  typingUsers: new Set()
+  typingUsers: new Set(),
+  replyDraft: null,
+  seenMentionMessageIds: new Set(),
+  readMentionMessageIds: new Set()
 }
 
 export { state }

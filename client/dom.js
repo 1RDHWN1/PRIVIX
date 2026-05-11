@@ -37,7 +37,10 @@ const channelSelect = document.getElementById("channel")
 const channelList = document.getElementById("channel-list")
 const activeChannelName = document.getElementById("active-channel-name")
 const activeChannelType = document.getElementById("active-channel-type")
+const activeChannelPresence = document.getElementById("active-channel-presence")
 const mobileBackBtn = document.getElementById("mobile-back-btn")
+const mobileMembersBtn = document.getElementById("mobile-members-btn")
+const mobileMembersBackdrop = document.getElementById("mobile-members-backdrop")
 const chatRoot = document.querySelector(".chat")
 const channelNameInput = document.getElementById("channel-name")
 const channelTypeSelect = document.getElementById("channel-type")
@@ -48,6 +51,10 @@ const permMemberView = document.getElementById("perm-member-view")
 const permMemberSend = document.getElementById("perm-member-send")
 const savePermBtn = document.getElementById("save-perm-btn")
 const messages = document.getElementById("messages")
+const chatJumpControls = document.getElementById("chat-jump-controls")
+const chatJumpToMentionBtn = document.getElementById("chat-jump-to-mention-btn")
+const chatJumpMentionCount = document.getElementById("chat-jump-mention-count")
+const chatJumpToBottomBtn = document.getElementById("chat-jump-to-bottom-btn")
 const typingIndicator = document.getElementById("typing-indicator")
 const usernameInput = document.getElementById("username")
 const connectionStatus = document.getElementById("connection-status")
@@ -86,6 +93,10 @@ const serverContextMenu = document.getElementById("server-context-menu")
 const serverContextMenuTitle = document.getElementById("server-context-menu-title")
 const serverContextMenuSubtitle = document.getElementById("server-context-menu-subtitle")
 const serverContextMenuItems = Array.from(document.querySelectorAll("[data-server-menu-action]"))
+const memberContextMenu = document.getElementById("member-context-menu")
+const memberContextMenuTitle = document.getElementById("member-context-menu-title")
+const memberContextMenuSubtitle = document.getElementById("member-context-menu-subtitle")
+const memberContextMenuItems = Array.from(document.querySelectorAll("[data-member-menu-action]"))
 const voicePanel = document.getElementById("voice-panel")
 const voiceStatus = document.getElementById("voice-status")
 const voiceNetworkPill = document.getElementById("voice-network-pill")
@@ -127,6 +138,11 @@ const voicePttToggle = document.getElementById("voice-ptt-toggle")
 const voicePttKeyLabel = document.getElementById("voice-ptt-key")
 const voicePttSetKeyBtn = document.getElementById("voice-ptt-setkey")
 const voiceAudio = document.getElementById("voice-audio")
+const replyDraft = document.getElementById("reply-draft")
+const replyDraftUser = document.getElementById("reply-draft-user")
+const replyDraftText = document.getElementById("reply-draft-text")
+const replyDraftCancel = document.getElementById("reply-draft-cancel")
+const mentionSuggest = document.getElementById("mention-suggest")
 
 export {
   msgInput,
@@ -168,7 +184,10 @@ export {
   channelList,
   activeChannelName,
   activeChannelType,
+  activeChannelPresence,
   mobileBackBtn,
+  mobileMembersBtn,
+  mobileMembersBackdrop,
   chatRoot,
   channelNameInput,
   channelTypeSelect,
@@ -179,6 +198,10 @@ export {
   permMemberSend,
   savePermBtn,
   messages,
+  chatJumpControls,
+  chatJumpToMentionBtn,
+  chatJumpMentionCount,
+  chatJumpToBottomBtn,
   typingIndicator,
   usernameInput,
   connectionStatus,
@@ -217,6 +240,10 @@ export {
   serverContextMenuTitle,
   serverContextMenuSubtitle,
   serverContextMenuItems,
+  memberContextMenu,
+  memberContextMenuTitle,
+  memberContextMenuSubtitle,
+  memberContextMenuItems,
   voicePanel,
   voiceStatus,
   voiceNetworkPill,
@@ -257,5 +284,10 @@ export {
   voicePttToggle,
   voicePttKeyLabel,
   voicePttSetKeyBtn,
-  voiceAudio
+  voiceAudio,
+  replyDraft,
+  replyDraftUser,
+  replyDraftText,
+  replyDraftCancel,
+  mentionSuggest
 }

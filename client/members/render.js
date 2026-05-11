@@ -1,4 +1,10 @@
-import { memberList, memberFilterInput, memberOnlineSummary, memberUsernameInput } from "../dom.js"
+import {
+  activeChannelPresence,
+  memberList,
+  memberFilterInput,
+  memberOnlineSummary,
+  memberUsernameInput
+} from "../dom.js"
 import { state } from "../state.js"
 import { appendHighlightedText, formatMuteRemaining } from "../utils.js"
 import { hasServerPermission } from "../permissions.js"
@@ -114,42 +120,14 @@ function buildMemberRow(item, options) {
   main.appendChild(identity)
   line.appendChild(main)
 
-  const actions = document.createElement("div")
-  actions.className = "member-actions"
-  const addAction = (label, extraClass, onClick) => {
-    const btn = document.createElement("button")
-    btn.type = "button"
-    btn.className = `member-action-btn ${extraClass || ""}`.trim()
-    btn.textContent = label
-    btn.addEventListener("click", (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      onClick()
-    })
-    actions.appendChild(btn)
-  }
-
-  if (!isSelf && canManageRoles && role !== "admin") {
-    addAction("Admin", "", () => handlers.setMemberRole?.("admin", usernameText))
-  }
-  if (!isSelf && canManageRoles && role === "member") {
-    addAction("Mod", "", () => handlers.setMemberRole?.("moderator", usernameText))
-  }
-  if (!isSelf && canManageRoles && role !== "member") {
-    addAction("Member", "", () => handlers.setMemberRole?.("member", usernameText))
-  }
-  if (!isSelf && canKickMembers) {
-    addAction("Kick", "is-danger", () => handlers.kickMember?.(usernameText))
-  }
-  if (!isSelf && canMuteMembers && !isMuted) {
-    addAction("Mute", "is-warn", () => handlers.muteMember?.(usernameText, 10))
-  }
-  if (!isSelf && canMuteMembers && isMuted) {
-    addAction("Unmute", "", () => handlers.unmuteMember?.(usernameText))
-  }
-  if (actions.childElementCount > 0) {
-    line.appendChild(actions)
-  }
+  line.dataset.username = usernameText
+  line.dataset.role = role
+  line.dataset.isSelf = isSelf ? "true" : "false"
+  line.dataset.isMuted = isMuted ? "true" : "false"
+  line.dataset.canManageRoles = canManageRoles ? "true" : "false"
+  line.dataset.canMuteMembers = canMuteMembers ? "true" : "false"
+  line.dataset.canKickMembers = canKickMembers ? "true" : "false"
+  line.title = isSelf ? "Ini profil kamu" : "Klik kanan untuk opsi moderasi"
 
   line.tabIndex = 0
   line.setAttribute("role", "group")
@@ -184,6 +162,9 @@ function renderMembers(members) {
 
   if (memberOnlineSummary) {
     memberOnlineSummary.textContent = `Online ${totalOnline}/${totalMembers}`
+  }
+  if (activeChannelPresence) {
+    activeChannelPresence.textContent = `Online ${totalOnline}/${totalMembers}`
   }
 
   renderListWithTransition(memberList, (fragment) => {

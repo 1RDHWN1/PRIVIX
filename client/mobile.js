@@ -1,4 +1,11 @@
-import { channelList, channelSelect, mobileBackBtn } from "./dom.js"
+import {
+  activeChannelPresence,
+  channelList,
+  channelSelect,
+  mobileBackBtn,
+  mobileMembersBackdrop,
+  mobileMembersBtn
+} from "./dom.js"
 
 const MOBILE_BREAKPOINT = 760
 let viewportSyncFrame = 0
@@ -26,8 +33,16 @@ function scheduleViewportSync() {
     syncViewportCssVars()
     if (!isMobileLayout()) {
       setMobileView("channels")
+      setMobileMembersOpen(false)
     }
   })
+}
+
+function showChatIfChannelReady() {
+  if (!isMobileLayout()) return
+  if (channelSelect && channelSelect.value) {
+    setMobileView("chat")
+  }
 }
 
 function setMobileView(view) {
@@ -36,6 +51,7 @@ function setMobileView(view) {
 
   if (!isMobileLayout()) {
     appRoot.classList.remove("is-mobile-chat")
+    setMobileMembersOpen(false)
     return
   }
 
@@ -43,7 +59,29 @@ function setMobileView(view) {
     appRoot.classList.add("is-mobile-chat")
   } else {
     appRoot.classList.remove("is-mobile-chat")
+    setMobileMembersOpen(false)
   }
+}
+
+function setMobileMembersOpen(isOpen) {
+  const appRoot = document.querySelector(".app")
+  if (!appRoot) return
+
+  const shouldOpen = Boolean(isOpen && isMobileLayout())
+  appRoot.classList.toggle("is-mobile-members-open", shouldOpen)
+
+  if (mobileMembersBtn) {
+    mobileMembersBtn.setAttribute("aria-expanded", shouldOpen ? "true" : "false")
+  }
+  if (mobileMembersBackdrop) {
+    mobileMembersBackdrop.setAttribute("aria-hidden", shouldOpen ? "false" : "true")
+  }
+}
+
+function toggleMobileMembers() {
+  const appRoot = document.querySelector(".app")
+  const isOpen = Boolean(appRoot && appRoot.classList.contains("is-mobile-members-open"))
+  setMobileMembersOpen(!isOpen)
 }
 
 function initMobileNav() {
@@ -70,15 +108,39 @@ function initMobileNav() {
   if (mobileBackBtn) {
     mobileBackBtn.addEventListener("click", handleToChannels)
   }
+  if (mobileMembersBtn) {
+    mobileMembersBtn.addEventListener("click", (event) => {
+      event.preventDefault()
+      toggleMobileMembers()
+    })
+  }
+  if (activeChannelPresence) {
+    activeChannelPresence.addEventListener("click", toggleMobileMembers)
+  }
+  if (mobileMembersBackdrop) {
+    mobileMembersBackdrop.addEventListener("click", () => setMobileMembersOpen(false))
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setMobileMembersOpen(false)
+    }
+  })
 
   window.addEventListener("resize", scheduleViewportSync, { passive: true })
   window.addEventListener("orientationchange", scheduleViewportSync, { passive: true })
+  window.addEventListener("privix:channel-ready", showChatIfChannelReady)
+  window.addEventListener("privix:no-channel", () => {
+    setMobileMembersOpen(false)
+    setMobileView("channels")
+  })
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", scheduleViewportSync, { passive: true })
     window.visualViewport.addEventListener("scroll", scheduleViewportSync, { passive: true })
   }
 
   scheduleViewportSync()
+  requestAnimationFrame(showChatIfChannelReady)
 }
 
 export { initMobileNav, setMobileView }

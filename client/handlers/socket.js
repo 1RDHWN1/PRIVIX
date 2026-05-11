@@ -11,9 +11,17 @@ import { socket } from "../socket.js"
 import { SERVER_KEY, CHANNEL_KEY } from "../constants.js"
 import { notify, setStatus } from "../notice.js"
 import {
+  deleteMessageFromView,
   focusInviteInput,
+  isMessageListNearBottom,
+  messageMentionsUser,
   renderTypingIndicator,
   renderMessage,
+  resetMessageJumpState,
+  scrollMessageListToBottom,
+  syncChatJumpControls,
+  trackUnreadMentionMessage,
+  updateMessageReactions,
   setInvitePreview,
   setServerOptions,
   setChannelOptions,
@@ -52,12 +60,53 @@ function notifyRemovedFromServer(serverName, reason = "") {
 function bindSocketHandlers() {
   socket.on("chat message", (data) => {
     if (!data || data.channel !== channelSelect.value) return
+    const wasNearBottom = isMessageListNearBottom()
     if (data.username && data.username !== state.username) {
       state.typingUsers.delete(String(data.username))
       renderTypingIndicator()
     }
+    const messageId = Number(data.id)
+    const isSelfMessage = String(data.username || "") === String(state.username || "")
+    const isMentionForSelf = !isSelfMessage && messageMentionsUser(data.message, state.username)
+    let isKnownMentionMessage = false
+    if (isMentionForSelf) {
+      isKnownMentionMessage =
+        Number.isInteger(messageId) &&
+        messageId > 0 &&
+        state.seenMentionMessageIds.has(messageId)
+      if (!isKnownMentionMessage) {
+        notify(`Kamu di-mention oleh ${data.username}`, "info", {
+          title: "Mention",
+          okLabel: "Lihat"
+        })
+        if (Number.isInteger(messageId) && messageId > 0) {
+          state.seenMentionMessageIds.add(messageId)
+        }
+      }
+    }
     renderMessage(data)
-    messages.scrollTop = messages.scrollHeight
+    if (isSelfMessage || wasNearBottom) {
+      if (isMentionForSelf && Number.isInteger(messageId) && messageId > 0) {
+        state.readMentionMessageIds.add(messageId)
+      }
+      scrollMessageListToBottom("auto")
+      return
+    }
+    if (isMentionForSelf && !isKnownMentionMessage && Number.isInteger(messageId) && messageId > 0) {
+      trackUnreadMentionMessage(messageId)
+      return
+    }
+    syncChatJumpControls()
+  })
+
+  socket.on("message reaction update", (payload) => {
+    if (!payload) return
+    updateMessageReactions(payload.message_id, payload.reactions)
+  })
+
+  socket.on("message deleted", (payload) => {
+    if (!payload) return
+    deleteMessageFromView(payload.message_id)
   })
 
   socket.on("typing indicator", (payload) => {
@@ -148,6 +197,7 @@ function bindSocketHandlers() {
       resetTypingState({ notifyServer: true })
       setInvitePreview("")
       messages.innerHTML = ""
+      resetMessageJumpState()
       memberUsernameInput.value = ""
       notifyRemovedFromServer(removedServerName, removedReason)
       startSessionForSelectedChannel(false)

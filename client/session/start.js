@@ -14,7 +14,9 @@ import {
   setInvitePreview,
   renderNoServerEmptyState,
   setServerOptions,
-  renderMessage
+  renderMessage,
+  resetMessageJumpState,
+  scrollMessageListToBottom
 } from "../ui.js"
 import { buildConnectedStatus } from "../permissions.js"
 import {
@@ -29,6 +31,7 @@ import { setAuditLogs } from "../audit.js"
 import { resetTypingState } from "../typing.js"
 import { socket } from "../socket.js"
 import { getAuthTokenForUsername, storeAuthTokenForUsername } from "../auth.js"
+import { clearReplyDraft } from "../reply.js"
 import {
   getActiveServer,
   applySelectionFromStorage,
@@ -60,6 +63,10 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
     usernameInput.value = nextUsername
   }
   resetTypingState({ notifyServer: true })
+  clearReplyDraft()
+  state.seenMentionMessageIds.clear()
+  state.readMentionMessageIds.clear()
+  resetMessageJumpState()
   setInvitePreview("")
   setStatus("Joining channel...", false)
 
@@ -105,6 +112,7 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
       setStatus("Belum join server • masuk pakai invite code", false)
       renderNoServerEmptyState()
       updateChannelActionState()
+      window.dispatchEvent(new CustomEvent("privix:no-channel"))
       if (state.pendingInviteCodeFromUrl && !state.inviteAutoJoinAttempted) {
         state.inviteAutoJoinAttempted = true
         inviteCodeInput.value = state.pendingInviteCodeFromUrl
@@ -123,7 +131,9 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
       state.isSessionReady = false
       setStatus("No channel available", false)
       messages.innerHTML = ""
+      resetMessageJumpState()
       updateChannelActionState()
+      window.dispatchEvent(new CustomEvent("privix:no-channel"))
       return { ok: true }
     }
 
@@ -148,13 +158,14 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
     historyMessages.forEach((row) => {
       renderMessage(row, { animate: false })
     })
-    messages.scrollTop = messages.scrollHeight
+    scrollMessageListToBottom("auto")
 
     state.isSessionReady = true
     localStorage.setItem(SERVER_KEY, String(activeServer.id))
     localStorage.setItem(CHANNEL_KEY, activeChannel)
     setStatus(buildConnectedStatus(activeServer, activeChannel), true)
     updateChannelActionState()
+    window.dispatchEvent(new CustomEvent("privix:channel-ready"))
     msgInput.focus()
 
     if (typeof onReady === "function") {
