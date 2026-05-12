@@ -122,6 +122,566 @@ const io = new Server(server, {
 
 const MESSAGE_REACTION_EMOJIS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"]
 const MESSAGE_REACTION_EMOJI_SET = new Set(MESSAGE_REACTION_EMOJIS)
+const RICH_STATUS_PRESETS = {
+  online: "Online",
+  coding: "Lagi ngoding",
+  afk: "AFK",
+  gaming: "Main game",
+  busy: "Busy"
+}
+const RICH_STATUS_KEY_SET = new Set(Object.keys(RICH_STATUS_PRESETS))
+const MAX_RICH_STATUS_TEXT_LENGTH = 60
+const userPresenceStatusByKey = new Map()
+const DRAW_GUESS_WORDS = [
+  "kucing",
+  "anjing",
+  "ikan",
+  "burung",
+  "kelinci",
+  "gajah",
+  "harimau",
+  "zebra",
+  "komputer",
+  "laptop",
+  "keyboard",
+  "mouse",
+  "monitor",
+  "printer",
+  "kamera",
+  "telepon",
+  "jam tangan",
+  "kacamata",
+  "payung",
+  "sepeda",
+  "motor",
+  "mobil",
+  "pesawat",
+  "kereta",
+  "kapal",
+  "roket",
+  "hujan",
+  "petir",
+  "pelangi",
+  "awan",
+  "matahari",
+  "bulan",
+  "bintang",
+  "gunung",
+  "pantai",
+  "laut",
+  "danau",
+  "hutan",
+  "sungai",
+  "air terjun",
+  "sekolah",
+  "rumah sakit",
+  "perpustakaan",
+  "pasar",
+  "restoran",
+  "bioskop",
+  "stadion",
+  "robot",
+  "astronot",
+  "ninja",
+  "dokter",
+  "polisi",
+  "pemadam",
+  "petani",
+  "nelayan",
+  "guru",
+  "nasi goreng",
+  "mie ayam",
+  "bakso",
+  "sate",
+  "rendang",
+  "roti bakar",
+  "es krim",
+  "kopi susu",
+  "gitar",
+  "piano",
+  "drum",
+  "biola",
+  "mikrofon",
+  "headphone",
+  "gamepad",
+  "joystick",
+  "bola basket",
+  "bola voli",
+  "raket",
+  "skateboard",
+  "layang layang",
+  "balon",
+  "kado",
+  "lilin ulang tahun"
+]
+const DRAW_GUESS_ROUND_MS = 90 * 1000
+const DRAW_GUESS_MAX_STROKES = 2600
+const DRAW_GUESS_MAX_GUESS_LENGTH = 60
+const WORD_RUSH_WORDS_BY_DIFFICULTY = {
+  easy: [
+    "rumah",
+    "mobil",
+    "bulan",
+    "hari",
+    "pagi",
+    "malam",
+    "makan",
+    "minum",
+    "tidur",
+    "bangun",
+    "jalan",
+    "duduk",
+    "main",
+    "baca",
+    "tulis",
+    "lihat",
+    "dengar",
+    "cinta",
+    "marah",
+    "sedih",
+    "senang",
+    "takut",
+    "sabar",
+    "cepat",
+    "lambat",
+    "besar",
+    "kecil",
+    "baik",
+    "buruk",
+    "putih"
+  ],
+  medium: [
+    "makanan",
+    "minuman",
+    "sekolah",
+    "pelajar",
+    "guru",
+    "buku",
+    "kelas",
+    "kerja",
+    "kantor",
+    "dokter",
+    "rumah sakit",
+    "keluarga",
+    "teman",
+    "pesta",
+    "liburan",
+    "belanja",
+    "pasar",
+    "toko",
+    "uang",
+    "jual",
+    "beli",
+    "istirahat",
+    "bermain",
+    "belajar",
+    "latihan",
+    "percaya",
+    "adil",
+    "hemat",
+    "mahal",
+    "murah"
+  ],
+  hard: [
+    "authorization",
+    "cryptography",
+    "infrastructure",
+    "compatibility",
+    "fragmentation",
+    "extraordinary",
+    "configuration",
+    "virtualization",
+    "sustainability",
+    "interoperable",
+    "personalization",
+    "responsiveness",
+    "collaboration",
+    "countermeasure",
+    "communication",
+    "differentiation",
+    "implementation",
+    "asynchronous",
+    "synchronization",
+    "containerization",
+    "microservices",
+    "reconciliation",
+    "deterministic",
+    "observability",
+    "serialization",
+    "idempotency",
+    "parallelization",
+    "interactivity",
+    "accessibility",
+    "maintainability",
+    "decentralized",
+    "multithreading",
+    "progressively",
+    "reusability",
+    "transformation"
+  ]
+}
+const WORD_RUSH_DIFFICULTY_SET = new Set(["easy", "medium", "hard"])
+const WORD_RUSH_ROUND_MS_BY_DIFFICULTY = {
+  easy: 75 * 1000,
+  medium: 60 * 1000,
+  hard: 45 * 1000
+}
+const WORD_RUSH_MAX_GUESS_LENGTH = 80
+const GAME_ROOM_NAME_PATTERN = /^game(?:-[a-z0-9-]+)?$/i
+const SUPPORTED_GAME_IDS = new Set(["drawguess", "wordrush"])
+const drawGuessSessionsByRoom = new Map()
+const drawGuessScoresByRoom = new Map()
+const drawGuessTimerByRoom = new Map()
+const wordRushSessionsByRoom = new Map()
+const wordRushScoresByRoom = new Map()
+const wordRushTimerByRoom = new Map()
+const gameLobbyByRoom = new Map()
+
+function buildPresenceUserKey(userId, username) {
+  const resolvedUserId = Number(userId)
+  if (Number.isInteger(resolvedUserId) && resolvedUserId > 0) {
+    return `id:${resolvedUserId}`
+  }
+  const normalizedUsername = normalizeText(username).toLowerCase()
+  if (!normalizedUsername) return ""
+  return `name:${normalizedUsername}`
+}
+
+function sanitizeRichStatusPayload(payload) {
+  const rawStatusKey = normalizeText(payload && payload.status_key).toLowerCase()
+  const statusKey = RICH_STATUS_KEY_SET.has(rawStatusKey) ? rawStatusKey : "online"
+  const customStatus = normalizeText(payload && payload.status_text).slice(0, MAX_RICH_STATUS_TEXT_LENGTH)
+  return {
+    statusKey,
+    statusText: customStatus
+  }
+}
+
+function getDefaultPresenceStatus() {
+  return { status_key: "online", status_text: "" }
+}
+
+function setPresenceStatusForUser(userId, username, statusPayload = null) {
+  const presenceKey = buildPresenceUserKey(userId, username)
+  if (!presenceKey) return getDefaultPresenceStatus()
+  const normalized =
+    statusPayload && typeof statusPayload === "object"
+      ? sanitizeRichStatusPayload(statusPayload)
+      : getDefaultPresenceStatus()
+  const nextValue = {
+    status_key: normalized.statusKey,
+    status_text: normalized.statusText
+  }
+  userPresenceStatusByKey.set(presenceKey, nextValue)
+  return nextValue
+}
+
+function getPresenceStatusForUser(userId, username) {
+  const presenceKey = buildPresenceUserKey(userId, username)
+  if (!presenceKey) return getDefaultPresenceStatus()
+  const saved = userPresenceStatusByKey.get(presenceKey)
+  if (!saved) return getDefaultPresenceStatus()
+  return {
+    status_key: RICH_STATUS_KEY_SET.has(String(saved.status_key || "")) ? String(saved.status_key) : "online",
+    status_text: normalizeText(saved.status_text).slice(0, MAX_RICH_STATUS_TEXT_LENGTH)
+  }
+}
+
+function clearPresenceStatusForUser(userId, username) {
+  const presenceKey = buildPresenceUserKey(userId, username)
+  if (!presenceKey) return
+  userPresenceStatusByKey.delete(presenceKey)
+}
+
+function randomDrawGuessWord() {
+  if (!Array.isArray(DRAW_GUESS_WORDS) || DRAW_GUESS_WORDS.length === 0) return "misteri"
+  const index = Math.floor(Math.random() * DRAW_GUESS_WORDS.length)
+  return String(DRAW_GUESS_WORDS[index] || "misteri")
+}
+
+function normalizeDrawGuessCompareText(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function buildDrawGuessMask(word) {
+  const raw = String(word || "")
+  if (!raw) return ""
+  return raw
+    .split("")
+    .map((char) => {
+      if (char === " ") return "  "
+      if (/[a-z0-9]/i.test(char)) return "_ "
+      return `${char} `
+    })
+    .join("")
+    .trim()
+}
+
+function isGameRoomChannelName(channelName) {
+  const safeChannelName = normalizeText(channelName).toLowerCase()
+  if (!safeChannelName) return false
+  return GAME_ROOM_NAME_PATTERN.test(safeChannelName)
+}
+
+function normalizeGameId(value) {
+  const gameId = normalizeText(value).toLowerCase()
+  if (!SUPPORTED_GAME_IDS.has(gameId)) return ""
+  return gameId
+}
+
+function getOrCreateGameLobby(roomKey) {
+  const key = String(roomKey || "")
+  if (!key) return { drawguess: new Set(), wordrush: new Set() }
+  if (!gameLobbyByRoom.has(key)) {
+    gameLobbyByRoom.set(key, {
+      drawguess: new Set(),
+      wordrush: new Set()
+    })
+  }
+  return gameLobbyByRoom.get(key)
+}
+
+function getGamePlayersFromLobby(roomKey, gameId) {
+  const key = String(roomKey || "")
+  const safeGameId = normalizeGameId(gameId)
+  if (!key || !safeGameId) return []
+  const lobby = getOrCreateGameLobby(key)
+  const bucket = lobby[safeGameId]
+  if (!(bucket instanceof Set)) return []
+  return Array.from(bucket)
+    .map((item) => normalizeText(item))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function buildGameLobbyState(roomKey, username = "") {
+  const key = String(roomKey || "")
+  const safeUsername = normalizeText(username)
+  const drawguessPlayers = getGamePlayersFromLobby(key, "drawguess")
+  const wordrushPlayers = getGamePlayersFromLobby(key, "wordrush")
+  const joinedGameId = drawguessPlayers.includes(safeUsername)
+    ? "drawguess"
+    : wordrushPlayers.includes(safeUsername)
+    ? "wordrush"
+    : ""
+  return {
+    room_key: key,
+    drawguess_players: drawguessPlayers,
+    wordrush_players: wordrushPlayers,
+    joined_game_id: joinedGameId
+  }
+}
+
+function leaveAllGameLobbies(roomKey, username) {
+  const key = String(roomKey || "")
+  const safeUsername = normalizeText(username)
+  if (!key || !safeUsername) return false
+  const lobby = getOrCreateGameLobby(key)
+  let changed = false
+  for (const gameId of SUPPORTED_GAME_IDS) {
+    const bucket = lobby[gameId]
+    if (bucket instanceof Set && bucket.delete(safeUsername)) {
+      changed = true
+    }
+  }
+  return changed
+}
+
+function joinGameLobby(roomKey, username, gameId) {
+  const key = String(roomKey || "")
+  const safeUsername = normalizeText(username)
+  const safeGameId = normalizeGameId(gameId)
+  if (!key || !safeUsername || !safeGameId) {
+    return { ok: false, gameId: "", changed: false, players: [] }
+  }
+  const lobby = getOrCreateGameLobby(key)
+  leaveAllGameLobbies(key, safeUsername)
+  const bucket = lobby[safeGameId]
+  if (bucket instanceof Set) {
+    bucket.add(safeUsername)
+  }
+  return {
+    ok: true,
+    gameId: safeGameId,
+    changed: true,
+    players: getGamePlayersFromLobby(key, safeGameId)
+  }
+}
+
+function clearWordRushTimer(roomKey) {
+  const key = String(roomKey || "")
+  const timer = wordRushTimerByRoom.get(key)
+  if (timer) {
+    clearTimeout(timer)
+    wordRushTimerByRoom.delete(key)
+  }
+}
+
+function normalizeWordRushDifficulty(value) {
+  const raw = normalizeText(value).toLowerCase()
+  if (!WORD_RUSH_DIFFICULTY_SET.has(raw)) return "medium"
+  return raw
+}
+
+function randomWordRushWord(difficulty) {
+  const safeDifficulty = normalizeWordRushDifficulty(difficulty)
+  const wordPool = WORD_RUSH_WORDS_BY_DIFFICULTY[safeDifficulty]
+  if (!Array.isArray(wordPool) || wordPool.length === 0) return "word"
+  const index = Math.floor(Math.random() * wordPool.length)
+  return String(wordPool[index] || "word")
+}
+
+function getWordRushRoundMs(difficulty) {
+  const safeDifficulty = normalizeWordRushDifficulty(difficulty)
+  const value = Number(WORD_RUSH_ROUND_MS_BY_DIFFICULTY[safeDifficulty])
+  if (!Number.isFinite(value) || value <= 0) return WORD_RUSH_ROUND_MS_BY_DIFFICULTY.medium
+  return value
+}
+
+function shuffleText(text) {
+  const chars = Array.from(String(text || ""))
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[chars[i], chars[j]] = [chars[j], chars[i]]
+  }
+  return chars.join("")
+}
+
+function buildWordRushPrompt(word, difficulty = "medium") {
+  const rawWord = normalizeText(word).toLowerCase()
+  if (!rawWord) return ""
+  return shuffleText(rawWord)
+}
+
+function normalizeWordRushCompareText(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function getWordRushScoreMap(roomKey) {
+  const key = String(roomKey || "")
+  if (!key) return new Map()
+  if (!wordRushScoresByRoom.has(key)) {
+    wordRushScoresByRoom.set(key, new Map())
+  }
+  return wordRushScoresByRoom.get(key)
+}
+
+function serializeWordRushScores(scoreMap) {
+  const rows = []
+  if (!(scoreMap instanceof Map)) return rows
+  scoreMap.forEach((score, username) => {
+    const safeUsername = normalizeText(username)
+    const safeScore = Number(score) || 0
+    if (!safeUsername) return
+    rows.push({ username: safeUsername, score: safeScore })
+  })
+  rows.sort((a, b) => b.score - a.score || a.username.localeCompare(b.username))
+  return rows
+}
+
+function getDrawGuessScoreMap(roomKey) {
+  const key = String(roomKey || "")
+  if (!key) return new Map()
+  if (!drawGuessScoresByRoom.has(key)) {
+    drawGuessScoresByRoom.set(key, new Map())
+  }
+  return drawGuessScoresByRoom.get(key)
+}
+
+function serializeDrawGuessScores(scoreMap) {
+  const rows = []
+  if (!(scoreMap instanceof Map)) return rows
+  scoreMap.forEach((score, username) => {
+    const safeUsername = normalizeText(username)
+    const safeScore = Number(score) || 0
+    if (!safeUsername) return
+    rows.push({ username: safeUsername, score: safeScore })
+  })
+  rows.sort((a, b) => b.score - a.score || a.username.localeCompare(b.username))
+  return rows
+}
+
+function clearDrawGuessTimer(roomKey) {
+  const key = String(roomKey || "")
+  const timer = drawGuessTimerByRoom.get(key)
+  if (timer) {
+    clearTimeout(timer)
+    drawGuessTimerByRoom.delete(key)
+  }
+}
+
+function clearDrawGuessRoomData(roomKey) {
+  const key = String(roomKey || "")
+  if (!key) return
+  clearDrawGuessTimer(key)
+  clearWordRushTimer(key)
+  drawGuessSessionsByRoom.delete(key)
+  drawGuessScoresByRoom.delete(key)
+  wordRushSessionsByRoom.delete(key)
+  wordRushScoresByRoom.delete(key)
+  gameLobbyByRoom.delete(key)
+}
+
+function moveDrawGuessRoomState(oldRoomKey, newRoomKey) {
+  const oldKey = String(oldRoomKey || "")
+  const nextKey = String(newRoomKey || "")
+  if (!oldKey || !nextKey || oldKey === nextKey) return false
+
+  const drawGuessSession = drawGuessSessionsByRoom.get(oldKey) || null
+  const drawGuessScoreMap = drawGuessScoresByRoom.get(oldKey) || null
+  const wordRushSession = wordRushSessionsByRoom.get(oldKey) || null
+  const wordRushScoreMap = wordRushScoresByRoom.get(oldKey) || null
+  const gameLobby = gameLobbyByRoom.get(oldKey) || null
+
+  clearDrawGuessTimer(oldKey)
+  clearDrawGuessTimer(nextKey)
+  clearWordRushTimer(oldKey)
+  clearWordRushTimer(nextKey)
+  drawGuessSessionsByRoom.delete(oldKey)
+  drawGuessScoresByRoom.delete(oldKey)
+  wordRushSessionsByRoom.delete(oldKey)
+  wordRushScoresByRoom.delete(oldKey)
+  gameLobbyByRoom.delete(oldKey)
+  drawGuessSessionsByRoom.delete(nextKey)
+  drawGuessScoresByRoom.delete(nextKey)
+  wordRushSessionsByRoom.delete(nextKey)
+  wordRushScoresByRoom.delete(nextKey)
+  gameLobbyByRoom.delete(nextKey)
+
+  if (drawGuessSession) {
+    drawGuessSession.roomKey = nextKey
+    drawGuessSessionsByRoom.set(nextKey, drawGuessSession)
+  }
+  if (drawGuessScoreMap instanceof Map) {
+    drawGuessScoresByRoom.set(nextKey, drawGuessScoreMap)
+  }
+  if (wordRushSession) {
+    wordRushSession.roomKey = nextKey
+    wordRushSessionsByRoom.set(nextKey, wordRushSession)
+  }
+  if (wordRushScoreMap instanceof Map) {
+    wordRushScoresByRoom.set(nextKey, wordRushScoreMap)
+  }
+  if (gameLobby && typeof gameLobby === "object") {
+    gameLobbyByRoom.set(nextKey, {
+      drawguess: new Set(gameLobby.drawguess instanceof Set ? Array.from(gameLobby.drawguess) : []),
+      wordrush: new Set(gameLobby.wordrush instanceof Set ? Array.from(gameLobby.wordrush) : [])
+    })
+  }
+  return {
+    movedDrawGuess: Boolean(drawGuessSession),
+    movedWordRush: Boolean(wordRushSession),
+    movedLobby: Boolean(gameLobby)
+  }
+}
 
 function normalizeReactionRows(rows) {
   const grouped = new Map()
@@ -368,10 +928,13 @@ io.on("connection", (socket) => {
       const userId = Number(peer.data.userId) || 0
       const uniqueKey = userId > 0 ? `id:${userId}` : `name:${username.toLowerCase()}`
       if (byUser.has(uniqueKey)) return
+      const presenceStatus = getPresenceStatusForUser(userId, username)
       byUser.set(uniqueKey, {
         user_id: userId > 0 ? userId : null,
         username,
-        channel: normalizeText(peer.data.activeChannel).toLowerCase()
+        channel: normalizeText(peer.data.activeChannel).toLowerCase(),
+        status_key: presenceStatus.status_key,
+        status_text: presenceStatus.status_text
       })
     })
 
@@ -398,6 +961,295 @@ io.on("connection", (socket) => {
       emitTypingIndicator(false)
     }
     socket.data.isTyping = false
+  }
+
+  async function getRoomParticipantUsernames(roomKey) {
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return []
+    const peers = await io.in(safeRoomKey).fetchSockets()
+    const names = new Set()
+    peers.forEach((peer) => {
+      const username = normalizeText(peer.data.username)
+      if (!username) return
+      names.add(username)
+    })
+    return Array.from(names).sort((a, b) => a.localeCompare(b))
+  }
+
+  function buildDrawGuessStateForUsername(roomKey, username, participants = []) {
+    const safeRoomKey = String(roomKey || "")
+    const safeUsername = normalizeText(username)
+    const session = drawGuessSessionsByRoom.get(safeRoomKey) || null
+    const scoreMap = getDrawGuessScoreMap(safeRoomKey)
+    const isDrawer = Boolean(session && safeUsername && session.drawerUsername === safeUsername)
+    const gamePlayers = getGamePlayersFromLobby(safeRoomKey, "drawguess")
+    return {
+      room_key: safeRoomKey,
+      active: Boolean(session),
+      drawer_username: session ? session.drawerUsername : "",
+      is_drawer: isDrawer,
+      word_mask: session ? (isDrawer ? session.word : buildDrawGuessMask(session.word)) : "",
+      round_started_at_ts: session ? session.startedAtTs : 0,
+      round_ends_at_ts: session ? session.endsAtTs : 0,
+      strokes: session ? [...session.strokes] : [],
+      scores: serializeDrawGuessScores(scoreMap),
+      participants: Array.isArray(participants) && participants.length ? participants : gamePlayers
+    }
+  }
+
+  function buildWordRushStateForUsername(roomKey, username, participants = []) {
+    const safeRoomKey = String(roomKey || "")
+    const safeUsername = normalizeText(username)
+    const session = wordRushSessionsByRoom.get(safeRoomKey) || null
+    const scoreMap = getWordRushScoreMap(safeRoomKey)
+    const gamePlayers = getGamePlayersFromLobby(safeRoomKey, "wordrush")
+    const joined = gamePlayers.includes(safeUsername)
+    return {
+      room_key: safeRoomKey,
+      active: Boolean(session),
+      joined: joined,
+      difficulty: session ? normalizeWordRushDifficulty(session.difficulty) : "medium",
+      word_hint: session ? String(session.wordPrompt || "") : "",
+      round_started_at_ts: session ? session.startedAtTs : 0,
+      round_ends_at_ts: session ? session.endsAtTs : 0,
+      scores: serializeWordRushScores(scoreMap),
+      participants: Array.isArray(participants) && participants.length ? participants : gamePlayers
+    }
+  }
+
+  async function emitGameLobbyStateToRoom(roomKey) {
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return
+    const peers = await io.in(safeRoomKey).fetchSockets()
+    peers.forEach((peer) => {
+      const username = normalizeText(peer.data.username)
+      peer.emit("game lobby state", buildGameLobbyState(safeRoomKey, username))
+    })
+  }
+
+  async function emitGameLobbyStateToSocket(targetSocket, roomKey) {
+    if (!targetSocket) return
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return
+    const username = normalizeText(targetSocket.data.username)
+    targetSocket.emit("game lobby state", buildGameLobbyState(safeRoomKey, username))
+  }
+
+  async function emitDrawGuessStateToRoom(roomKey) {
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return
+    const peers = await io.in(safeRoomKey).fetchSockets()
+    const participants = getGamePlayersFromLobby(safeRoomKey, "drawguess")
+    peers.forEach((peer) => {
+      const username = normalizeText(peer.data.username)
+      peer.emit("drawguess state", buildDrawGuessStateForUsername(safeRoomKey, username, participants))
+    })
+  }
+
+  async function emitDrawGuessStateToSocket(targetSocket, roomKey) {
+    if (!targetSocket) return
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return
+    const username = normalizeText(targetSocket.data.username)
+    const participants = getGamePlayersFromLobby(safeRoomKey, "drawguess")
+    targetSocket.emit("drawguess state", buildDrawGuessStateForUsername(safeRoomKey, username, participants))
+  }
+
+  async function emitWordRushStateToRoom(roomKey) {
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return
+    const peers = await io.in(safeRoomKey).fetchSockets()
+    const participants = getGamePlayersFromLobby(safeRoomKey, "wordrush")
+    peers.forEach((peer) => {
+      const username = normalizeText(peer.data.username)
+      peer.emit("wordrush state", buildWordRushStateForUsername(safeRoomKey, username, participants))
+    })
+  }
+
+  async function emitWordRushStateToSocket(targetSocket, roomKey) {
+    if (!targetSocket) return
+    const safeRoomKey = String(roomKey || "")
+    if (!safeRoomKey) return
+    const username = normalizeText(targetSocket.data.username)
+    const participants = getGamePlayersFromLobby(safeRoomKey, "wordrush")
+    targetSocket.emit("wordrush state", buildWordRushStateForUsername(safeRoomKey, username, participants))
+  }
+
+  function normalizeDrawGuessStroke(payload) {
+    const toUnit = (value) => {
+      const num = Number(value)
+      if (!Number.isFinite(num)) return null
+      return Math.max(0, Math.min(1, num))
+    }
+    const x0 = toUnit(payload && payload.x0)
+    const y0 = toUnit(payload && payload.y0)
+    const x1 = toUnit(payload && payload.x1)
+    const y1 = toUnit(payload && payload.y1)
+    if ([x0, y0, x1, y1].some((value) => value === null)) return null
+
+    const size = Math.max(0.0025, Math.min(0.05, Number(payload && payload.size) || 0.007))
+    const color = normalizeText(payload && payload.color).slice(0, 24) || "#f1f5ff"
+    const tool = normalizeText(payload && payload.tool).toLowerCase() === "erase" ? "erase" : "draw"
+    return { x0, y0, x1, y1, size, color, tool }
+  }
+
+  async function endDrawGuessRound(roomKey, reason, winnerUsername = "") {
+    const safeRoomKey = String(roomKey || "")
+    const session = drawGuessSessionsByRoom.get(safeRoomKey)
+    if (!session) {
+      clearDrawGuessTimer(safeRoomKey)
+      return
+    }
+
+    clearDrawGuessTimer(safeRoomKey)
+    drawGuessSessionsByRoom.delete(safeRoomKey)
+
+    const safeWinner = normalizeText(winnerUsername)
+    const safeWord = String(session.word || "")
+    const createdAt = new Date().toISOString()
+    let announcement = `🎨 Draw & Guess selesai. Kata: "${safeWord}".`
+    if (safeWinner) {
+      announcement = `🎨 ${safeWinner} berhasil menebak kata "${safeWord}"!`
+    } else if (reason === "timeout") {
+      announcement = `🎨 Waktu habis. Kata yang benar: "${safeWord}".`
+    } else if (reason === "drawer_left") {
+      announcement = `🎨 Runde berakhir karena drawer keluar. Kata: "${safeWord}".`
+    }
+
+    io.to(safeRoomKey).emit("chat message", {
+      id: 0,
+      username: "Privix Bot",
+      message: announcement,
+      created_at: createdAt,
+      reply_to_message_id: null,
+      reply_to: null,
+      reactions: [],
+      channel: session.channelName,
+      server_id: session.serverId
+    })
+
+    io.to(safeRoomKey).emit("drawguess round ended", {
+      reason: String(reason || "ended"),
+      winner_username: safeWinner || null,
+      word: safeWord
+    })
+
+    await emitDrawGuessStateToRoom(safeRoomKey)
+  }
+
+  function scheduleDrawGuessTimeout(roomKey) {
+    const safeRoomKey = String(roomKey || "")
+    const session = drawGuessSessionsByRoom.get(safeRoomKey)
+    if (!session) return
+    clearDrawGuessTimer(safeRoomKey)
+    const delay = Math.max(200, session.endsAtTs - Date.now())
+    const timer = setTimeout(() => {
+      endDrawGuessRound(safeRoomKey, "timeout").catch(() => {})
+    }, delay)
+    drawGuessTimerByRoom.set(safeRoomKey, timer)
+  }
+
+  async function handleDrawGuessUserLeave(roomKey, username) {
+    const safeRoomKey = String(roomKey || "")
+    const safeUsername = normalizeText(username)
+    if (!safeRoomKey || !safeUsername) return
+    const session = drawGuessSessionsByRoom.get(safeRoomKey)
+    if (session && session.drawerUsername === safeUsername) {
+      await endDrawGuessRound(safeRoomKey, "drawer_left")
+      return
+    }
+    const participants = getGamePlayersFromLobby(safeRoomKey, "drawguess")
+    if (participants.length === 0) {
+      clearDrawGuessTimer(safeRoomKey)
+      drawGuessSessionsByRoom.delete(safeRoomKey)
+      drawGuessScoresByRoom.delete(safeRoomKey)
+      return
+    }
+    await emitDrawGuessStateToRoom(safeRoomKey)
+  }
+
+  async function endWordRushRound(roomKey, reason, winnerUsername = "") {
+    const safeRoomKey = String(roomKey || "")
+    const session = wordRushSessionsByRoom.get(safeRoomKey)
+    if (!session) {
+      clearWordRushTimer(safeRoomKey)
+      return
+    }
+
+    clearWordRushTimer(safeRoomKey)
+    wordRushSessionsByRoom.delete(safeRoomKey)
+    const safeWinner = normalizeText(winnerUsername)
+    const safeWord = String(session.word || "")
+    const createdAt = new Date().toISOString()
+    let announcement = `⚡ Word Rush selesai. Kata: "${safeWord}".`
+    if (safeWinner) {
+      announcement = `⚡ ${safeWinner} berhasil paling cepat untuk kata "${safeWord}"!`
+    } else if (reason === "timeout") {
+      announcement = `⚡ Waktu habis. Jawaban Word Rush: "${safeWord}".`
+    } else if (reason === "players_left") {
+      announcement = `⚡ Word Rush berhenti karena pemain kurang. Kata: "${safeWord}".`
+    }
+
+    io.to(safeRoomKey).emit("chat message", {
+      id: 0,
+      username: "Privix Bot",
+      message: announcement,
+      created_at: createdAt,
+      reply_to_message_id: null,
+      reply_to: null,
+      reactions: [],
+      channel: session.channelName,
+      server_id: session.serverId
+    })
+
+    io.to(safeRoomKey).emit("wordrush round ended", {
+      reason: String(reason || "ended"),
+      winner_username: safeWinner || null,
+      word: safeWord
+    })
+
+    await emitWordRushStateToRoom(safeRoomKey)
+  }
+
+  function scheduleWordRushTimeout(roomKey) {
+    const safeRoomKey = String(roomKey || "")
+    const session = wordRushSessionsByRoom.get(safeRoomKey)
+    if (!session) return
+    clearWordRushTimer(safeRoomKey)
+    const delay = Math.max(200, session.endsAtTs - Date.now())
+    const timer = setTimeout(() => {
+      endWordRushRound(safeRoomKey, "timeout").catch(() => {})
+    }, delay)
+    wordRushTimerByRoom.set(safeRoomKey, timer)
+  }
+
+  async function handleWordRushUserLeave(roomKey, username) {
+    const safeRoomKey = String(roomKey || "")
+    const safeUsername = normalizeText(username)
+    if (!safeRoomKey || !safeUsername) return
+    const session = wordRushSessionsByRoom.get(safeRoomKey)
+    if (!session) {
+      await emitWordRushStateToRoom(safeRoomKey)
+      return
+    }
+    const participants = getGamePlayersFromLobby(safeRoomKey, "wordrush")
+    if (participants.length < 2) {
+      await endWordRushRound(safeRoomKey, "players_left")
+      return
+    }
+    await emitWordRushStateToRoom(safeRoomKey)
+  }
+
+  async function handleGameUserLeave(roomKey, username) {
+    const safeRoomKey = String(roomKey || "")
+    const safeUsername = normalizeText(username)
+    if (!safeRoomKey || !safeUsername) return
+    leaveAllGameLobbies(safeRoomKey, safeUsername)
+    await Promise.all([
+      emitGameLobbyStateToRoom(safeRoomKey),
+      handleDrawGuessUserLeave(safeRoomKey, safeUsername),
+      handleWordRushUserLeave(safeRoomKey, safeUsername)
+    ])
   }
 
   function notifyVoiceLeave(roomKey) {
@@ -486,6 +1338,8 @@ io.on("connection", (socket) => {
   socket.on("set username", async (payload, ack) => {
     const reply = typeof ack === "function" ? ack : () => {}
     try {
+      const previousUserId = Number(socket.data.userId) || 0
+      const previousUsername = normalizeText(socket.data.username)
       const { username: rawUsername, authToken } = parseUsernamePayload(payload)
       const nextUsername = normalizeText(rawUsername)
       if (!isValidLength(nextUsername, MAX_USERNAME_LENGTH)) {
@@ -494,8 +1348,15 @@ io.on("connection", (socket) => {
       }
 
       const { user, authToken: nextAuthToken } = await ensureUser(nextUsername, authToken)
+      const previousPresenceKey = buildPresenceUserKey(previousUserId, previousUsername)
+      const nextPresenceKey = buildPresenceUserKey(user.id, user.username)
+      if (previousPresenceKey && previousPresenceKey !== nextPresenceKey) {
+        clearPresenceStatusForUser(previousUserId, previousUsername)
+      }
       socket.data.username = user.username
       socket.data.userId = user.id
+      const currentStatus = getPresenceStatusForUser(socket.data.userId, socket.data.username)
+      setPresenceStatusForUser(socket.data.userId, socket.data.username, currentStatus)
       if (Number.isInteger(Number(socket.data.activeServerId)) && Number(socket.data.activeServerId) > 0) {
         emitServerOnlineUsers(Number(socket.data.activeServerId)).catch(() => {})
       }
@@ -507,6 +1368,25 @@ io.on("connection", (socket) => {
       }
       console.error("set username error:", error)
       reply({ ok: false, error: "Gagal set username" })
+    }
+  })
+
+  socket.on("set rich status", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      if (!socket.data.userId || !socket.data.username) {
+        reply({ ok: false, error: "Set username dulu" })
+        return
+      }
+      const nextStatus = setPresenceStatusForUser(socket.data.userId, socket.data.username, payload)
+      const activeServerId = Number(socket.data.activeServerId)
+      if (Number.isInteger(activeServerId) && activeServerId > 0) {
+        emitServerOnlineUsers(activeServerId).catch(() => {})
+      }
+      reply({ ok: true, status: nextStatus })
+    } catch (error) {
+      console.error("set rich status error:", error)
+      reply({ ok: false, error: "Gagal update status" })
     }
   })
 
@@ -1788,6 +2668,7 @@ io.on("connection", (socket) => {
       }
 
       const roomKey = buildRoomKey(serverId, channelName)
+      clearDrawGuessRoomData(roomKey)
       await dbRun("BEGIN TRANSACTION")
       await dbRun("DELETE FROM messages WHERE channel = ?", [roomKey])
       await dbRun("DELETE FROM channels WHERE id = ?", [channelRow.id])
@@ -1868,6 +2749,7 @@ io.on("connection", (socket) => {
 
       const oldRoomKey = buildRoomKey(serverId, oldChannel)
       const newRoomKey = buildRoomKey(serverId, newChannel)
+      const movedGameState = moveDrawGuessRoomState(oldRoomKey, newRoomKey)
 
       await dbRun("BEGIN TRANSACTION")
       await dbRun(
@@ -1899,6 +2781,17 @@ io.on("connection", (socket) => {
         old_channel: oldChannel,
         new_channel: newChannel
       })
+      if (movedGameState && movedGameState.movedDrawGuess) {
+        scheduleDrawGuessTimeout(newRoomKey)
+        emitDrawGuessStateToRoom(newRoomKey).catch(() => {})
+      }
+      if (movedGameState && movedGameState.movedWordRush) {
+        scheduleWordRushTimeout(newRoomKey)
+        emitWordRushStateToRoom(newRoomKey).catch(() => {})
+      }
+      if (movedGameState && movedGameState.movedLobby) {
+        emitGameLobbyStateToRoom(newRoomKey).catch(() => {})
+      }
 
       reply({
         ok: true,
@@ -2420,6 +3313,7 @@ io.on("connection", (socket) => {
       if (previousRoom) {
         clearTypingIndicator()
         socket.leave(previousRoom)
+        handleGameUserLeave(previousRoom, socket.data.username).catch(() => {})
       }
       if (Number.isInteger(previousServerId) && previousServerId > 0 && previousServerId !== serverId) {
         socket.leave(buildServerPresenceRoomKey(previousServerId))
@@ -2450,6 +3344,12 @@ io.on("connection", (socket) => {
         channel: channelName,
         history: historyRows
       })
+      emitGameLobbyStateToSocket(socket, nextRoomKey).catch(() => {})
+      emitDrawGuessStateToSocket(socket, nextRoomKey).catch(() => {})
+      emitWordRushStateToSocket(socket, nextRoomKey).catch(() => {})
+      emitGameLobbyStateToRoom(nextRoomKey).catch(() => {})
+      emitDrawGuessStateToRoom(nextRoomKey).catch(() => {})
+      emitWordRushStateToRoom(nextRoomKey).catch(() => {})
       if (Number.isInteger(previousServerId) && previousServerId > 0 && previousServerId !== serverId) {
         emitServerOnlineUsers(previousServerId).catch(() => {})
       }
@@ -2483,6 +3383,7 @@ io.on("connection", (socket) => {
       if (socket.data.roomKey) {
         clearTypingIndicator()
         socket.leave(socket.data.roomKey)
+        handleGameUserLeave(socket.data.roomKey, socket.data.username).catch(() => {})
       }
       if (Number.isInteger(previousServerId) && previousServerId > 0) {
         socket.leave(buildServerPresenceRoomKey(previousServerId))
@@ -2498,6 +3399,12 @@ io.on("connection", (socket) => {
       )
       const historyRows = await enrichMessages(rows.reverse())
       reply({ ok: true, channel: channelName, history: historyRows })
+      emitGameLobbyStateToSocket(socket, roomKey).catch(() => {})
+      emitDrawGuessStateToSocket(socket, roomKey).catch(() => {})
+      emitWordRushStateToSocket(socket, roomKey).catch(() => {})
+      emitGameLobbyStateToRoom(roomKey).catch(() => {})
+      emitDrawGuessStateToRoom(roomKey).catch(() => {})
+      emitWordRushStateToRoom(roomKey).catch(() => {})
       if (Number.isInteger(previousServerId) && previousServerId > 0) {
         emitServerOnlineUsers(previousServerId).catch(() => {})
       }
@@ -2703,6 +3610,412 @@ io.on("connection", (socket) => {
     }
   })
 
+  socket.on("game join", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      const channelName = normalizeText(socket.data.activeChannel)
+      const gameId = normalizeGameId(payload && payload.game_id)
+      if (!roomKey || !username || !channelName) {
+        reply({ ok: false, error: "Join channel dulu" })
+        return
+      }
+      if (!gameId) {
+        reply({ ok: false, error: "Game tidak valid" })
+        return
+      }
+      if (!isGameRoomChannelName(channelName)) {
+        reply({
+          ok: false,
+          error: "Masuk room game dulu (#game / #game-*) untuk main."
+        })
+        return
+      }
+
+      const previousJoinedGameId = buildGameLobbyState(roomKey, username).joined_game_id
+      const joined = joinGameLobby(roomKey, username, gameId)
+      if (!joined.ok) {
+        reply({ ok: false, error: "Gagal masuk game" })
+        return
+      }
+
+      if (previousJoinedGameId && previousJoinedGameId !== joined.gameId) {
+        if (previousJoinedGameId === "drawguess") {
+          await handleDrawGuessUserLeave(roomKey, username)
+        } else if (previousJoinedGameId === "wordrush") {
+          await handleWordRushUserLeave(roomKey, username)
+        }
+      }
+
+      await Promise.all([
+        emitGameLobbyStateToRoom(roomKey),
+        emitDrawGuessStateToRoom(roomKey),
+        emitWordRushStateToRoom(roomKey)
+      ])
+
+      reply({
+        ok: true,
+        game_id: joined.gameId,
+        players: joined.players,
+        username
+      })
+    } catch (error) {
+      console.error("game join error:", error)
+      reply({ ok: false, error: "Gagal masuk game" })
+    }
+  })
+
+  socket.on("game leave", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      const gameId = normalizeGameId(payload && payload.game_id)
+      if (!roomKey || !username) {
+        reply({ ok: false, error: "Join channel dulu" })
+        return
+      }
+      if (!gameId) {
+        reply({ ok: false, error: "Game tidak valid" })
+        return
+      }
+      const lobby = getOrCreateGameLobby(roomKey)
+      const bucket = lobby[gameId]
+      const removed = bucket instanceof Set ? bucket.delete(username) : false
+
+      if (gameId === "drawguess") {
+        await handleDrawGuessUserLeave(roomKey, username)
+      } else if (gameId === "wordrush") {
+        await handleWordRushUserLeave(roomKey, username)
+      }
+
+      await Promise.all([
+        emitGameLobbyStateToRoom(roomKey),
+        emitDrawGuessStateToRoom(roomKey),
+        emitWordRushStateToRoom(roomKey)
+      ])
+      reply({
+        ok: true,
+        game_id: gameId,
+        removed: Boolean(removed)
+      })
+    } catch (error) {
+      console.error("game leave error:", error)
+      reply({ ok: false, error: "Gagal keluar game" })
+    }
+  })
+
+  socket.on("drawguess start", async (ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      const serverId = Number(socket.data.activeServerId) || 0
+      const channelName = normalizeText(socket.data.activeChannel)
+      if (!roomKey || !username || !channelName) {
+        reply({ ok: false, error: "Join channel dulu" })
+        return
+      }
+      if (!isGameRoomChannelName(channelName)) {
+        reply({
+          ok: false,
+          code: "DRAWGUESS_REQUIRE_GAME_ROOM",
+          error: "Masuk room game dulu (#game / #game-*) untuk main."
+        })
+        return
+      }
+      if (drawGuessSessionsByRoom.has(roomKey)) {
+        reply({ ok: false, code: "DRAWGUESS_ACTIVE_ROUND", error: "Ronde game masih berjalan" })
+        return
+      }
+
+      if (serverId > 0) {
+        const channelRow = await dbGet(
+          "SELECT type FROM channels WHERE server_id = ? AND name = ? LIMIT 1",
+          [serverId, channelName]
+        )
+        if (!channelRow || String(channelRow.type || "text") !== "text") {
+          reply({ ok: false, error: "Draw & Guess hanya untuk text channel" })
+          return
+        }
+      }
+
+      const participants = getGamePlayersFromLobby(roomKey, "drawguess")
+      if (!participants.includes(username)) {
+        reply({
+          ok: false,
+          code: "DRAWGUESS_JOIN_REQUIRED",
+          error: "Kamu belum masuk ke game Draw & Guess"
+        })
+        return
+      }
+      if (participants.length < 2) {
+        reply({
+          ok: false,
+          code: "DRAWGUESS_NEED_PLAYERS",
+          error: "Butuh minimal 2 pemain di room game",
+          players: participants,
+          min_players: 2
+        })
+        return
+      }
+
+      const scoreMap = getDrawGuessScoreMap(roomKey)
+      if (!scoreMap.has(username)) {
+        scoreMap.set(username, 0)
+      }
+
+      const word = randomDrawGuessWord()
+      const startedAtTs = Date.now()
+      const session = {
+        roomKey,
+        serverId,
+        channelName,
+        drawerUsername: username,
+        word,
+        startedAtTs,
+        endsAtTs: startedAtTs + DRAW_GUESS_ROUND_MS,
+        strokes: []
+      }
+      drawGuessSessionsByRoom.set(roomKey, session)
+      scheduleDrawGuessTimeout(roomKey)
+
+      io.to(roomKey).emit("drawguess round started", {
+        drawer_username: username,
+        round_ends_at_ts: session.endsAtTs
+      })
+      await emitDrawGuessStateToRoom(roomKey)
+      reply({ ok: true })
+    } catch (error) {
+      console.error("drawguess start error:", error)
+      reply({ ok: false, error: "Gagal memulai Draw & Guess" })
+    }
+  })
+
+  socket.on("drawguess stroke", (payload) => {
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      if (!roomKey || !username) return
+      const session = drawGuessSessionsByRoom.get(roomKey)
+      if (!session) return
+      if (session.drawerUsername !== username) return
+
+      const stroke = normalizeDrawGuessStroke(payload)
+      if (!stroke) return
+      session.strokes.push(stroke)
+      if (session.strokes.length > DRAW_GUESS_MAX_STROKES) {
+        session.strokes = session.strokes.slice(session.strokes.length - DRAW_GUESS_MAX_STROKES)
+      }
+      socket.to(roomKey).emit("drawguess stroke", stroke)
+    } catch (error) {
+      console.error("drawguess stroke error:", error)
+    }
+  })
+
+  socket.on("drawguess clear", async () => {
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      if (!roomKey || !username) return
+      const session = drawGuessSessionsByRoom.get(roomKey)
+      if (!session) return
+      if (session.drawerUsername !== username) return
+      session.strokes = []
+      io.to(roomKey).emit("drawguess clear")
+      await emitDrawGuessStateToRoom(roomKey)
+    } catch (error) {
+      console.error("drawguess clear error:", error)
+    }
+  })
+
+  socket.on("drawguess guess", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      const guessText = normalizeText(payload && payload.guess).slice(0, DRAW_GUESS_MAX_GUESS_LENGTH)
+      if (!roomKey || !username) {
+        reply({ ok: false, error: "Join channel dulu" })
+        return
+      }
+      const session = drawGuessSessionsByRoom.get(roomKey)
+      if (!session) {
+        reply({ ok: false, error: "Belum ada ronde aktif" })
+        return
+      }
+      const participants = getGamePlayersFromLobby(roomKey, "drawguess")
+      if (!participants.includes(username)) {
+        reply({ ok: false, error: "Kamu belum masuk game Draw & Guess" })
+        return
+      }
+      if (session.drawerUsername === username) {
+        reply({ ok: false, error: "Drawer tidak bisa menebak" })
+        return
+      }
+      if (!guessText) {
+        reply({ ok: false, error: "Tebakan kosong" })
+        return
+      }
+
+      const isCorrect =
+        normalizeDrawGuessCompareText(guessText) === normalizeDrawGuessCompareText(session.word)
+      if (!isCorrect) {
+        reply({ ok: true, correct: false })
+        return
+      }
+
+      const scoreMap = getDrawGuessScoreMap(roomKey)
+      const previous = Number(scoreMap.get(username) || 0)
+      scoreMap.set(username, previous + 10)
+      await endDrawGuessRound(roomKey, "solved", username)
+      reply({ ok: true, correct: true, points: 10 })
+    } catch (error) {
+      console.error("drawguess guess error:", error)
+      reply({ ok: false, error: "Gagal memproses tebakan" })
+    }
+  })
+
+  socket.on("wordrush start", async (payload, ack) => {
+    let startPayload = payload
+    let reply = typeof ack === "function" ? ack : () => {}
+    if (typeof payload === "function") {
+      reply = payload
+      startPayload = {}
+    }
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      const serverId = Number(socket.data.activeServerId) || 0
+      const channelName = normalizeText(socket.data.activeChannel)
+      const difficulty = normalizeWordRushDifficulty(startPayload && startPayload.difficulty)
+      if (!roomKey || !username || !channelName) {
+        reply({ ok: false, error: "Join channel dulu" })
+        return
+      }
+      if (!isGameRoomChannelName(channelName)) {
+        reply({
+          ok: false,
+          code: "WORDRUSH_REQUIRE_GAME_ROOM",
+          error: "Masuk room game dulu (#game / #game-*) untuk main."
+        })
+        return
+      }
+      if (wordRushSessionsByRoom.has(roomKey)) {
+        reply({ ok: false, code: "WORDRUSH_ACTIVE_ROUND", error: "Ronde Word Rush masih berjalan" })
+        return
+      }
+      if (serverId > 0) {
+        const channelRow = await dbGet(
+          "SELECT type FROM channels WHERE server_id = ? AND name = ? LIMIT 1",
+          [serverId, channelName]
+        )
+        if (!channelRow || String(channelRow.type || "text") !== "text") {
+          reply({ ok: false, error: "Word Rush hanya untuk text channel" })
+          return
+        }
+      }
+
+      const players = getGamePlayersFromLobby(roomKey, "wordrush")
+      if (!players.includes(username)) {
+        reply({
+          ok: false,
+          code: "WORDRUSH_JOIN_REQUIRED",
+          error: "Kamu belum masuk ke game Word Rush"
+        })
+        return
+      }
+      if (players.length < 2) {
+        reply({
+          ok: false,
+          code: "WORDRUSH_NEED_PLAYERS",
+          error: "Butuh minimal 2 pemain di Word Rush",
+          players,
+          min_players: 2
+        })
+        return
+      }
+
+      const scoreMap = getWordRushScoreMap(roomKey)
+      players.forEach((playerName) => {
+        if (!scoreMap.has(playerName)) {
+          scoreMap.set(playerName, 0)
+        }
+      })
+
+      const word = randomWordRushWord(difficulty)
+      const roundMs = getWordRushRoundMs(difficulty)
+      const startedAtTs = Date.now()
+      const session = {
+        roomKey,
+        serverId,
+        channelName,
+        difficulty,
+        word,
+        wordPrompt: buildWordRushPrompt(word, difficulty),
+        startedAtTs,
+        endsAtTs: startedAtTs + roundMs
+      }
+      wordRushSessionsByRoom.set(roomKey, session)
+      scheduleWordRushTimeout(roomKey)
+
+      io.to(roomKey).emit("wordrush round started", {
+        difficulty: session.difficulty,
+        round_ends_at_ts: session.endsAtTs,
+        word_hint: session.wordPrompt
+      })
+      await emitWordRushStateToRoom(roomKey)
+      reply({ ok: true, difficulty: session.difficulty })
+    } catch (error) {
+      console.error("wordrush start error:", error)
+      reply({ ok: false, error: "Gagal memulai Word Rush" })
+    }
+  })
+
+  socket.on("wordrush guess", async (payload, ack) => {
+    const reply = typeof ack === "function" ? ack : () => {}
+    try {
+      const roomKey = String(socket.data.roomKey || "")
+      const username = normalizeText(socket.data.username)
+      const guessText = normalizeText(payload && payload.guess).slice(0, WORD_RUSH_MAX_GUESS_LENGTH)
+      if (!roomKey || !username) {
+        reply({ ok: false, error: "Join channel dulu" })
+        return
+      }
+      const session = wordRushSessionsByRoom.get(roomKey)
+      if (!session) {
+        reply({ ok: false, error: "Belum ada ronde Word Rush aktif" })
+        return
+      }
+      const players = getGamePlayersFromLobby(roomKey, "wordrush")
+      if (!players.includes(username)) {
+        reply({ ok: false, error: "Kamu belum masuk game Word Rush" })
+        return
+      }
+      if (!guessText) {
+        reply({ ok: false, error: "Tebakan kosong" })
+        return
+      }
+
+      const isCorrect =
+        normalizeWordRushCompareText(guessText) === normalizeWordRushCompareText(session.word)
+      if (!isCorrect) {
+        reply({ ok: true, correct: false })
+        return
+      }
+
+      const scoreMap = getWordRushScoreMap(roomKey)
+      const previous = Number(scoreMap.get(username) || 0)
+      scoreMap.set(username, previous + 10)
+      await endWordRushRound(roomKey, "solved", username)
+      reply({ ok: true, correct: true, points: 10 })
+    } catch (error) {
+      console.error("wordrush guess error:", error)
+      reply({ ok: false, error: "Gagal memproses tebakan Word Rush" })
+    }
+  })
+
   socket.on("typing state", (payload) => {
     try {
       if (!socket.data.username || !socket.data.roomKey) return
@@ -2717,9 +4030,34 @@ io.on("connection", (socket) => {
   })
 
   socket.on("disconnect", () => {
+    const previousRoomKey = String(socket.data.roomKey || "")
+    const previousUsername = normalizeText(socket.data.username)
     const activeServerId = Number(socket.data.activeServerId)
+    const disconnectedUserId = Number(socket.data.userId) || 0
+    const disconnectedUsername = normalizeText(socket.data.username)
     clearTypingIndicator()
     leaveVoiceRoom({ notifyPeers: true }).catch(() => {})
+    if (previousRoomKey && previousUsername) {
+      handleGameUserLeave(previousRoomKey, previousUsername).catch(() => {})
+    }
+    if (disconnectedUserId > 0 || disconnectedUsername) {
+      setTimeout(async () => {
+        try {
+          const peers = await io.fetchSockets()
+          const stillConnected = peers.some((peer) => {
+            const peerUserId = Number(peer.data.userId) || 0
+            if (disconnectedUserId > 0 && peerUserId > 0) {
+              return peerUserId === disconnectedUserId
+            }
+            const peerUsername = normalizeText(peer.data.username).toLowerCase()
+            return Boolean(peerUsername && peerUsername === disconnectedUsername.toLowerCase())
+          })
+          if (!stillConnected) {
+            clearPresenceStatusForUser(disconnectedUserId, disconnectedUsername)
+          }
+        } catch {}
+      }, 0)
+    }
     if (Number.isInteger(activeServerId) && activeServerId > 0) {
       setTimeout(() => {
         emitServerOnlineUsers(activeServerId).catch(() => {})

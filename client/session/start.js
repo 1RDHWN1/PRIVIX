@@ -23,6 +23,7 @@ import {
   fetchServersWithTimeout,
   setUsernameWithTimeout,
   joinServerChannelWithTimeout,
+  setRichStatusWithTimeout,
   getChannelPermissionWithTimeout,
   fetchMembersForServer
 } from "../api.js"
@@ -100,6 +101,12 @@ async function startSessionForSelectedChannel(showAlertOnFailure = true, onReady
     if (userResult.auth_token) {
       storeAuthTokenForUsername(state.username, userResult.auth_token)
     }
+    try {
+      await setRichStatusWithTimeout({
+        status_key: state.richStatus.status_key,
+        status_text: state.richStatus.status_text
+      })
+    } catch {}
     localStorage.setItem(USERNAME_KEY, state.username)
 
     state.serversCache = await fetchServersWithTimeout()

@@ -24,7 +24,8 @@ import { initMobileNav } from "./mobile.js"
 import { wireReplyDraftEvents } from "./reply.js"
 import { initMentionSuggestions } from "./mentions.js"
 import { initMessageJumpControls } from "./ui.js"
-import { initMiniGames } from "./minigames.js"
+import { initMemberProfilePopover } from "./memberProfile.js"
+import { initDrawGuessUi } from "./drawguess.js"
 
 state.username = localStorage.getItem(USERNAME_KEY) || ""
 usernameInput.value = state.username
@@ -56,7 +57,8 @@ initMobileNav()
 wireReplyDraftEvents()
 initMentionSuggestions()
 initMessageJumpControls()
-initMiniGames()
+initMemberProfilePopover()
+initDrawGuessUi()
 
 updateChannelActionState()
 resetTypingState()

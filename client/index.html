@@ -91,6 +91,15 @@
 <div id="section-profile" class="section section-profile">
 <label>Username</label>
 <input id="username" class="field" placeholder="username"/>
+<label>Status</label>
+<select id="user-status" class="field">
+  <option value="online" selected>Online</option>
+  <option value="coding">Lagi ngoding</option>
+  <option value="afk">AFK</option>
+  <option value="gaming">Main game</option>
+  <option value="busy">Busy</option>
+</select>
+<input id="user-status-text" class="field" maxlength="60" placeholder="status tambahan (opsional)"/>
 <div id="connection-status" class="status" data-state="pending">Connecting...</div>
 </div>
 
@@ -111,7 +120,7 @@
     </div>
     <div id="active-channel-type" class="chat-channel-type">text</div>
   </div>
-  <button class="mobile-search-btn" type="button" aria-label="Search messages">
+  <button id="mobile-search-btn" class="mobile-search-btn" type="button" aria-label="Search messages">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path fill="currentColor" d="M10.5 4a6.5 6.5 0 0 1 5.18 10.43l3.45 3.44a1 1 0 0 1-1.42 1.42l-3.44-3.45A6.5 6.5 0 1 1 10.5 4zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/>
     </svg>
@@ -121,9 +130,15 @@
       <path fill="currentColor" d="M8.5 11a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7zm7-1a3 3 0 1 1 0-6 3 3 0 0 1 0 6zM2.5 18.2c0-3.15 2.47-5.7 6-5.7s6 2.55 6 5.7c0 .72-.58 1.3-1.3 1.3H3.8c-.72 0-1.3-.58-1.3-1.3zm12.3 1.3c.45-.36.7-.91.7-1.53 0-1.75-.67-3.27-1.8-4.42.54-.2 1.16-.3 1.8-.3 3.18 0 5.2 2.18 5.2 4.94 0 .72-.58 1.31-1.3 1.31h-4.6z"/>
     </svg>
   </button>
+  <button id="mobile-game-btn" class="mobile-game-btn" type="button" aria-label="Open game tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M7 6h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2.8l-1.4-1.8a1 1 0 0 0-1.6 0L9.8 18H7a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3zm1.5 5a1.5 1.5 0 1 0 0 3h.5v.5a1.5 1.5 0 1 0 3 0V14h.5a1.5 1.5 0 1 0 0-3H12v-.5a1.5 1.5 0 1 0-3 0v.5zm8 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm-2.8 2.8a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z"/>
+    </svg>
+  </button>
   <div class="chat-header-actions">
     <div class="icon-pill">Members</div>
     <div class="icon-pill">Voice</div>
+    <button id="drawguess-toggle-btn" class="icon-pill icon-pill-button" type="button">Game</button>
   </div>
 </div>
 
@@ -133,6 +148,85 @@
   <div id="voice-stage-subtitle" class="voice-stage-subtitle">Belum ada yang join voice</div>
   <button id="voice-join-hero" class="voice-join-hero" type="button">Join Voice</button>
 </div>
+
+<section id="drawguess-panel" class="drawguess-panel" hidden>
+  <div class="game-room-top">
+    <div class="game-room-title">Game Room</div>
+    <div id="game-room-hint" class="game-room-hint">Main game hanya di channel #game / #game-*</div>
+  </div>
+
+  <div class="game-catalog">
+    <button id="game-item-drawguess" class="game-item is-active" type="button" data-game-id="drawguess">
+      <span class="game-item-title">Draw &amp; Guess</span>
+      <span class="game-item-copy">Gambar cepat, tebak secepatnya.</span>
+      <span id="game-item-drawguess-players" class="game-item-players">Pemain: -</span>
+    </button>
+    <button id="game-item-wordrush" class="game-item" type="button" data-game-id="wordrush">
+      <span class="game-item-title">Word Rush</span>
+      <span class="game-item-copy">Balap kata realtime, paling cepat menang.</span>
+      <span id="game-item-wordrush-players" class="game-item-players">Pemain: -</span>
+    </button>
+  </div>
+
+  <div id="game-room-screen-head" class="game-room-screen-head" hidden>
+    <button id="game-room-screen-back" class="game-room-screen-back" type="button" aria-label="Kembali ke lobby game">←</button>
+    <div class="game-room-screen-meta">
+      <div id="game-room-screen-title" class="game-room-screen-title">Game</div>
+      <div id="game-room-screen-players" class="game-room-screen-players">Pemain: -</div>
+    </div>
+  </div>
+
+  <div id="drawguess-room-panel" class="drawguess-room-panel">
+  <div class="drawguess-head">
+    <div class="drawguess-title-wrap">
+      <div class="drawguess-title">Draw &amp; Guess</div>
+      <div id="drawguess-status" class="drawguess-status">Belum ada ronde aktif</div>
+    </div>
+    <div class="drawguess-head-actions">
+      <button id="drawguess-start-btn" type="button">Start Round</button>
+      <button id="drawguess-clear-btn" type="button">Clear</button>
+    </div>
+  </div>
+  <div class="drawguess-meta">
+    <div id="drawguess-word" class="drawguess-word">Kata: -</div>
+    <div id="drawguess-timer" class="drawguess-timer">--s</div>
+  </div>
+  <div class="drawguess-canvas-wrap">
+    <canvas id="drawguess-canvas" width="960" height="520"></canvas>
+  </div>
+  <div class="drawguess-guess-row">
+    <input id="drawguess-guess-input" class="field drawguess-guess-input" maxlength="60" placeholder="tebak kata..." />
+    <button id="drawguess-guess-btn" type="button">Guess</button>
+  </div>
+  <div id="drawguess-score" class="drawguess-score"></div>
+  </div>
+
+  <div id="wordrush-room-panel" class="wordrush-room-panel" hidden>
+    <div class="wordrush-head">
+      <div class="wordrush-title-wrap">
+        <div class="wordrush-title">Word Rush</div>
+        <div id="wordrush-status" class="wordrush-status">Belum ada ronde aktif</div>
+      </div>
+      <div class="wordrush-head-actions">
+        <select id="wordrush-difficulty" class="field wordrush-difficulty" aria-label="Word Rush difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+        <button id="wordrush-start-btn" type="button">Start Round</button>
+      </div>
+    </div>
+    <div class="wordrush-meta">
+      <div id="wordrush-prompt" class="wordrush-prompt">Kata: -</div>
+      <div id="wordrush-timer" class="wordrush-timer">--s</div>
+    </div>
+    <div class="wordrush-guess-row">
+      <input id="wordrush-guess-input" class="field wordrush-guess-input" maxlength="80" placeholder="ketik jawaban kata..." />
+      <button id="wordrush-guess-btn" type="button">Guess</button>
+    </div>
+    <div id="wordrush-score" class="wordrush-score"></div>
+  </div>
+</section>
 
 <div class="messages" id="messages"></div>
 <div id="chat-jump-controls" class="chat-jump-controls" hidden>
@@ -369,7 +463,10 @@
   </div>
 
   <div id="section-members" class="section collapsible-section">
-  <h4>Members</h4>
+  <div class="members-mobile-header">
+    <h4>Members</h4>
+    <button id="mobile-members-close-btn" class="mobile-members-close-btn" type="button" aria-label="Close members panel">×</button>
+  </div>
   <small id="member-online-summary" class="member-online-summary">Online 0/0</small>
   <div class="row">
     <input id="member-filter" class="field" placeholder="search member or role"/>
@@ -422,34 +519,6 @@
   <div id="audit-list" class="member-list"></div>
   </div>
 
-  <div id="section-minigames" class="section collapsible-section minigames-section">
-    <div class="minigames-heading">
-      <div>
-        <h4>Minigames</h4>
-        <small>Main cepat langsung dari chat room.</small>
-      </div>
-      <span class="minigames-chip">beta</span>
-    </div>
-    <div class="minigames-grid">
-      <button class="minigame-card" type="button" data-minigame-command="/roll d20">
-        <span class="minigame-card-title">Dice Roll</span>
-        <span class="minigame-card-copy">Roll d20 buat keputusan cepat.</span>
-      </button>
-      <button class="minigame-card" type="button" data-minigame-command="/flip">
-        <span class="minigame-card-title">Coin Flip</span>
-        <span class="minigame-card-copy">Heads or tails, biar fair.</span>
-      </button>
-      <button class="minigame-card" type="button" data-minigame-command="/rps rock">
-        <span class="minigame-card-title">RPS</span>
-        <span class="minigame-card-copy">Rock, paper, scissors vs Privix.</span>
-      </button>
-      <button class="minigame-card" type="button" data-minigame-command="/guess 5">
-        <span class="minigame-card-title">Guess 1-10</span>
-        <span class="minigame-card-copy">Tebak angka random room.</span>
-      </button>
-    </div>
-    <small class="minigames-hint">Command: /roll, /flip, /rps paper, /guess 7, /games</small>
-  </div>
 </aside>
 
 <div id="mobile-members-backdrop" class="mobile-members-backdrop" aria-hidden="true"></div>
@@ -525,6 +594,28 @@
     <button class="context-menu-item is-danger" type="button" data-member-menu-action="kick">Kick Member</button>
     <button class="context-menu-item is-danger" type="button" data-member-menu-action="mute">Mute 10m</button>
     <button class="context-menu-item" type="button" data-member-menu-action="unmute">Unmute</button>
+  </div>
+</div>
+
+<div id="member-profile-popover" class="member-profile-popover" aria-hidden="true">
+  <div class="member-profile-popover-card" role="dialog" aria-modal="true" aria-labelledby="member-profile-name">
+    <button id="member-profile-close" class="member-profile-close" type="button" aria-label="Close profile">×</button>
+    <div class="member-profile-header">
+      <div id="member-profile-avatar" class="member-profile-avatar">?</div>
+      <div class="member-profile-meta">
+        <div id="member-profile-name" class="member-profile-name">Member</div>
+        <div id="member-profile-role" class="member-profile-role">member</div>
+      </div>
+    </div>
+    <div class="member-profile-info">
+      <div id="member-profile-presence" class="member-profile-presence">Offline</div>
+      <div id="member-profile-joined" class="member-profile-joined">Joined -</div>
+    </div>
+    <div class="member-profile-actions">
+      <button id="member-profile-mention" type="button">@ Mention</button>
+      <button id="member-profile-copy" type="button">Copy Name</button>
+      <button id="member-profile-moderate" type="button">Moderate</button>
+    </div>
   </div>
 </div>
 

@@ -35,6 +35,8 @@ import {
   memberList,
   memberUsernameInput,
   usernameInput,
+  userStatusSelect,
+  userStatusTextInput,
   messages,
   createServerModal,
   createServerDialogTitle,
@@ -42,6 +44,7 @@ import {
   createServerModalInput,
   createServerModalCancelBtn,
   createServerModalSubmitBtn,
+  mobileSearchBtn,
   serverContextMenu,
   serverContextMenuTitle,
   serverContextMenuSubtitle,
@@ -58,12 +61,20 @@ import {
   voiceLayoutBtn
 } from "../dom.js"
 import { state } from "../state.js"
-import { SERVER_KEY, CHANNEL_KEY, CHANNEL_TYPE_VOICE } from "../constants.js"
+import {
+  SERVER_KEY,
+  CHANNEL_KEY,
+  CHANNEL_TYPE_VOICE,
+  USER_RICH_STATUS_KEY,
+  MAX_RICH_STATUS_TEXT_LENGTH,
+  DEFAULT_RICH_STATUS_KEY
+} from "../constants.js"
 import { notify } from "../notice.js"
 import {
   setInvitePreview,
   setChannelOptions,
   resetMessageJumpState,
+  openMessageSearchPrompt,
   syncServerListSelection,
   syncChannelListSelection
 } from "../ui.js"
@@ -75,6 +86,7 @@ import {
 } from "../session.js"
 import { getFilteredMembers, renderMembers, refreshMuteButtonLabel } from "../members.js"
 import { getFilteredAuditLogs, renderAuditLogs } from "../audit.js"
+import { setRichStatusWithTimeout } from "../api.js"
 import {
   handleCreateChannel,
   handleDeleteChannel,
@@ -105,6 +117,59 @@ import {
   handleMentionKeydown,
   updateMentionSuggestions
 } from "../mentions.js"
+
+function normalizeRichStatusPayload(rawStatusKey, rawStatusText) {
+  const normalizedStatusKey = String(rawStatusKey || "").trim().toLowerCase() || DEFAULT_RICH_STATUS_KEY
+  const statusKey = userStatusSelect && Array.from(userStatusSelect.options).some((option) => option.value === normalizedStatusKey)
+    ? normalizedStatusKey
+    : DEFAULT_RICH_STATUS_KEY
+  const statusText = String(rawStatusText || "").trim().slice(0, MAX_RICH_STATUS_TEXT_LENGTH)
+  return { status_key: statusKey, status_text: statusText }
+}
+
+function readStoredRichStatus() {
+  try {
+    const raw = localStorage.getItem(USER_RICH_STATUS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return null
+    return normalizeRichStatusPayload(parsed.status_key, parsed.status_text)
+  } catch {
+    return null
+  }
+}
+
+function saveRichStatusToStorage(payload) {
+  try {
+    localStorage.setItem(USER_RICH_STATUS_KEY, JSON.stringify(payload))
+  } catch {}
+}
+
+function applyRichStatusToInputs(payload) {
+  if (userStatusSelect) {
+    userStatusSelect.value = payload.status_key
+  }
+  if (userStatusTextInput) {
+    userStatusTextInput.value = payload.status_text
+  }
+}
+
+async function syncRichStatusToServer({ silent = true } = {}) {
+  const payload = normalizeRichStatusPayload(
+    userStatusSelect ? userStatusSelect.value : state.richStatus.status_key,
+    userStatusTextInput ? userStatusTextInput.value : state.richStatus.status_text
+  )
+  state.richStatus = payload
+  saveRichStatusToStorage(payload)
+  if (!state.isSessionReady) return
+  try {
+    await setRichStatusWithTimeout(payload)
+  } catch (error) {
+    if (!silent) {
+      notify(error && error.message ? error.message : "Gagal update status", "error")
+    }
+  }
+}
 
 function autoResizeComposer() {
   if (!msgInput) return
@@ -440,6 +505,18 @@ function openMemberContextMenu(memberRow, x, y) {
   memberContextMenu.style.top = `${top}px`
 }
 
+function openMemberContextMenuByUsername(username) {
+  const targetUsername = String(username || "").trim().toLowerCase()
+  if (!targetUsername || !memberList) return
+  const rows = Array.from(memberList.querySelectorAll(".member-item"))
+  const targetRow = rows.find((row) => String(row.dataset.username || "").trim().toLowerCase() === targetUsername)
+  if (!targetRow) return
+  const rect = targetRow.getBoundingClientRect()
+  const x = Math.round(rect.left + Math.min(200, rect.width * 0.7))
+  const y = Math.round(rect.top + Math.min(32, rect.height * 0.55))
+  openMemberContextMenu(targetRow, x, y)
+}
+
 async function copyActiveServerInviteLink() {
   await handleGetInvite()
   if (!state.inviteShareUrl) {
@@ -455,6 +532,17 @@ async function copyActiveServerInviteLink() {
 }
 
 function bindUiHandlers() {
+  const storedStatus = readStoredRichStatus()
+  if (storedStatus) {
+    state.richStatus = storedStatus
+  } else {
+    state.richStatus = normalizeRichStatusPayload(
+      userStatusSelect ? userStatusSelect.value : DEFAULT_RICH_STATUS_KEY,
+      userStatusTextInput ? userStatusTextInput.value : ""
+    )
+  }
+  applyRichStatusToInputs(state.richStatus)
+
   serverSelect.addEventListener("change", () => {
     const activeServer = getActiveServer()
     if (!activeServer) return
@@ -519,6 +607,13 @@ function bindUiHandlers() {
       }
       channelSelect.value = channelName
       channelSelect.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+  }
+
+  if (mobileSearchBtn) {
+    mobileSearchBtn.addEventListener("click", (e) => {
+      e.preventDefault()
+      openMessageSearchPrompt()
     })
   }
 
@@ -823,6 +918,15 @@ function bindUiHandlers() {
     })
   }
 
+  window.addEventListener("privix:member-moderate-request", (event) => {
+    const detail = event && event.detail
+    const username = String(detail && detail.username || "")
+    if (!username) return
+    window.setTimeout(() => {
+      openMemberContextMenuByUsername(username)
+    }, 0)
+  })
+
   auditFilterSelect.addEventListener("change", () => {
     renderAuditLogs(getFilteredAuditLogs())
   })
@@ -869,6 +973,25 @@ function bindUiHandlers() {
       startSessionForSelectedChannel(true)
     }
   })
+
+  if (userStatusSelect) {
+    userStatusSelect.addEventListener("change", () => {
+      syncRichStatusToServer({ silent: false })
+    })
+  }
+
+  if (userStatusTextInput) {
+    userStatusTextInput.addEventListener("input", () => {
+      const trimmedValue = String(userStatusTextInput.value || "").slice(0, MAX_RICH_STATUS_TEXT_LENGTH)
+      if (userStatusTextInput.value !== trimmedValue) {
+        userStatusTextInput.value = trimmedValue
+      }
+      syncRichStatusToServer({ silent: true })
+    })
+    userStatusTextInput.addEventListener("blur", () => {
+      syncRichStatusToServer({ silent: false })
+    })
+  }
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && isCreateServerModalOpen()) {

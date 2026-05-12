@@ -6,6 +6,7 @@ const state = {
   serversCache: [],
   membersCache: [],
   onlineUsersByServer: new Map(),
+  onlinePresenceByServer: new Map(),
   auditLogsCache: [],
   inviteShareUrl: "",
   pendingInviteCodeFromUrl: "",
@@ -14,6 +15,10 @@ const state = {
   isTypingSent: false,
   typingUsers: new Set(),
   replyDraft: null,
+  richStatus: {
+    status_key: "online",
+    status_text: ""
+  },
   seenMentionMessageIds: new Set(),
   readMentionMessageIds: new Set()
 }

@@ -28,6 +28,7 @@ async function getServerMembers(serverId) {
       sm.id AS member_id,
       u.username,
       COALESCE(r.name, 'member') AS role_name,
+      sm.joined_at,
       sm.muted_until_ts,
       sm.mute_reason
     FROM server_members sm

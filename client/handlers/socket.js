@@ -39,6 +39,16 @@ import {
 import { setMembers, setOnlineUsersForServer, clearOnlineUsersForServer, clearAllOnlineUsers } from "../members.js"
 import { sendTypingState, stopTypingStateTimer, resetTypingState } from "../typing.js"
 import { resetVoiceState } from "../voice.js"
+import {
+  handleGameLobbyState,
+  handleDrawGuessState,
+  handleDrawGuessStroke,
+  handleDrawGuessClear,
+  handleDrawGuessRoundEnded,
+  handleWordRushState,
+  handleWordRushRoundEnded,
+  resetDrawGuessUi
+} from "../drawguess.js"
 
 function notifyRemovedFromServer(serverName, reason = "") {
   const safeServerName = String(serverName || "server")
@@ -107,6 +117,34 @@ function bindSocketHandlers() {
   socket.on("message deleted", (payload) => {
     if (!payload) return
     deleteMessageFromView(payload.message_id)
+  })
+
+  socket.on("drawguess state", (payload) => {
+    handleDrawGuessState(payload)
+  })
+
+  socket.on("game lobby state", (payload) => {
+    handleGameLobbyState(payload)
+  })
+
+  socket.on("drawguess stroke", (payload) => {
+    handleDrawGuessStroke(payload)
+  })
+
+  socket.on("drawguess clear", () => {
+    handleDrawGuessClear()
+  })
+
+  socket.on("drawguess round ended", (payload) => {
+    handleDrawGuessRoundEnded(payload)
+  })
+
+  socket.on("wordrush state", (payload) => {
+    handleWordRushState(payload)
+  })
+
+  socket.on("wordrush round ended", (payload) => {
+    handleWordRushRoundEnded(payload)
   })
 
   socket.on("typing indicator", (payload) => {
@@ -251,6 +289,7 @@ function bindSocketHandlers() {
 
   socket.on("connect", () => {
     resetTypingState()
+    resetDrawGuessUi()
     setStatus("Connected", false)
     updateChannelActionState()
     startSessionForSelectedChannel(false)
@@ -260,6 +299,7 @@ function bindSocketHandlers() {
     state.sessionRequestId += 1
     state.isSessionReady = false
     resetTypingState()
+    resetDrawGuessUi()
     resetVoiceState()
     clearAllOnlineUsers()
     const label = reason ? `Disconnected (${reason})` : "Disconnected"
@@ -274,6 +314,7 @@ function bindSocketHandlers() {
     state.sessionRequestId += 1
     state.isSessionReady = false
     resetTypingState()
+    resetDrawGuessUi()
     resetVoiceState()
     clearAllOnlineUsers()
     const reason = error && (error.message || error.description || error.type)

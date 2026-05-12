@@ -24,6 +24,9 @@ let messageActionDismissBound = false
 let chatJumpBound = false
 const unreadMentionIds = new Set()
 let unreadMentionOrder = []
+let messageSearchQuery = ""
+let messageSearchMatches = []
+let messageSearchCursor = -1
 
 function focusServerNameInput() {
   try {
@@ -82,6 +85,83 @@ function getMessageLineById(messageId) {
   const targetId = Number(messageId)
   if (!Number.isInteger(targetId) || targetId <= 0 || !messages) return null
   return messages.querySelector(`.chat-line[data-message-id="${targetId}"]`)
+}
+
+function clearMessageSearchHighlights() {
+  if (!messages) return
+  messages.querySelectorAll(".chat-line.is-search-hit, .chat-line.is-search-active").forEach((line) => {
+    line.classList.remove("is-search-hit")
+    line.classList.remove("is-search-active")
+  })
+}
+
+function rebuildMessageSearchMatches(query) {
+  const normalizedQuery = String(query || "").trim().toLowerCase()
+  messageSearchQuery = normalizedQuery
+  messageSearchMatches = []
+  messageSearchCursor = -1
+  clearMessageSearchHighlights()
+  if (!messages || !normalizedQuery) return
+
+  const lines = Array.from(messages.querySelectorAll(".chat-line"))
+  lines.forEach((line) => {
+    const textNode = line.querySelector(".chat-bubble-text")
+    if (!textNode) return
+    const text = String(textNode.textContent || "").toLowerCase()
+    if (!text.includes(normalizedQuery)) return
+    messageSearchMatches.push(line)
+    line.classList.add("is-search-hit")
+  })
+}
+
+function focusMessageSearchMatch(cursor) {
+  if (!messages || !messageSearchMatches.length) return false
+  const safeCursor = ((Number(cursor) || 0) % messageSearchMatches.length + messageSearchMatches.length) % messageSearchMatches.length
+  messageSearchCursor = safeCursor
+  const targetLine = messageSearchMatches[safeCursor]
+  if (!targetLine) return false
+  messageSearchMatches.forEach((line) => line.classList.remove("is-search-active"))
+  targetLine.classList.add("is-search-active")
+  targetLine.scrollIntoView({ behavior: "smooth", block: "center" })
+  return true
+}
+
+function openMessageSearchPrompt() {
+  if (!messages) return
+  const raw = window.prompt("Cari chat (kosongkan untuk reset):", messageSearchQuery)
+  if (raw === null) return
+
+  const query = String(raw || "").trim()
+  if (!query) {
+    messageSearchQuery = ""
+    messageSearchMatches = []
+    messageSearchCursor = -1
+    clearMessageSearchHighlights()
+    notify("Pencarian chat di-reset", "info")
+    return
+  }
+
+  const normalizedQuery = query.toLowerCase()
+  if (messageSearchMatches.length && normalizedQuery === messageSearchQuery) {
+    const moved = focusMessageSearchMatch(messageSearchCursor + 1)
+    if (!moved) {
+      notify("Tidak ada hasil chat untuk kata itu", "error")
+      return
+    }
+    notify(
+      `Hasil ${messageSearchCursor + 1}/${messageSearchMatches.length} untuk "${query}"`,
+      "info"
+    )
+    return
+  }
+
+  rebuildMessageSearchMatches(query)
+  if (!messageSearchMatches.length) {
+    notify(`Tidak ada chat yang cocok: "${query}"`, "error")
+    return
+  }
+  focusMessageSearchMatch(0)
+  notify(`Ditemukan ${messageSearchMatches.length} chat untuk "${query}"`, "success")
 }
 
 function getMessageBottomDistance() {
@@ -240,6 +320,10 @@ function initMessageJumpControls() {
 
 function resetMessageJumpState() {
   clearUnreadMentions()
+  clearMessageSearchHighlights()
+  messageSearchQuery = ""
+  messageSearchMatches = []
+  messageSearchCursor = -1
   syncChatJumpControls()
 }
 
@@ -871,5 +955,6 @@ export {
   isMessageListNearBottom,
   scrollMessageListToBottom,
   trackUnreadMentionMessage,
-  syncChatJumpControls
+  syncChatJumpControls,
+  openMessageSearchPrompt
 }

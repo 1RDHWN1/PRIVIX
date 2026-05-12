@@ -4,7 +4,8 @@ import {
   channelSelect,
   mobileBackBtn,
   mobileMembersBackdrop,
-  mobileMembersBtn
+  mobileMembersBtn,
+  mobileMembersCloseBtn
 } from "./dom.js"
 
 const MOBILE_BREAKPOINT = 760
@@ -119,6 +120,12 @@ function initMobileNav() {
   }
   if (mobileMembersBackdrop) {
     mobileMembersBackdrop.addEventListener("click", () => setMobileMembersOpen(false))
+  }
+  if (mobileMembersCloseBtn) {
+    mobileMembersCloseBtn.addEventListener("click", (event) => {
+      event.preventDefault()
+      setMobileMembersOpen(false)
+    })
   }
 
   document.addEventListener("keydown", (event) => {

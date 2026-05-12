@@ -116,6 +116,13 @@ function joinServerChannelWithTimeout(serverId, channelName) {
   )
 }
 
+function setRichStatusWithTimeout(statusPayload) {
+  return emitWithTimeout("set rich status", statusPayload, {
+    timeoutMessage: "Server tidak merespons saat update status",
+    failMessage: "Gagal update status"
+  })
+}
+
 function getChannelPermissionWithTimeout(serverId, channelName) {
   return emitWithTimeout(
     "get channel permission",
@@ -134,5 +141,6 @@ export {
   fetchServersWithTimeout,
   setUsernameWithTimeout,
   joinServerChannelWithTimeout,
+  setRichStatusWithTimeout,
   getChannelPermissionWithTimeout
 }

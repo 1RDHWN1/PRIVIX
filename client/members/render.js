@@ -45,6 +45,9 @@ function buildMemberRow(item, options) {
   const role = String((item && item.role_name) || "member").toLowerCase()
   const roleText =
     role === "admin" ? "admin" : role === "moderator" ? "moderator" : "member"
+  const statusKey = String((item && item.presence_status_key) || "online").toLowerCase()
+  const statusText = String((item && item.presence_status_text) || "").trim()
+  const joinedAt = String((item && item.joined_at) || "").trim()
   const mutedUntilTs = getMutedUntilTs(item)
   const isMuted = isMemberMuted(item)
   const muteReason = String((item && item.mute_reason) || "").trim()
@@ -89,14 +92,6 @@ function buildMemberRow(item, options) {
   const meta = document.createElement("div")
   meta.className = "member-meta"
 
-  if (item && item.is_online) {
-    const onlineTag = document.createElement("span")
-    onlineTag.className = "member-role"
-    onlineTag.dataset.role = "online"
-    onlineTag.textContent = "online"
-    meta.appendChild(onlineTag)
-  }
-
   const roleTag = document.createElement("span")
   roleTag.className = "member-role"
   roleTag.dataset.role = roleText
@@ -115,6 +110,22 @@ function buildMemberRow(item, options) {
   }
 
   identity.appendChild(nameRow)
+  if (item && item.is_online && (statusText || statusKey !== "online")) {
+    const presenceDetail = document.createElement("div")
+    presenceDetail.className = "member-presence-detail"
+    const statusLabel =
+      statusKey === "coding"
+        ? "Lagi ngoding"
+        : statusKey === "afk"
+        ? "AFK"
+        : statusKey === "gaming"
+        ? "Main game"
+        : statusKey === "busy"
+        ? "Busy"
+        : "Online"
+    presenceDetail.textContent = statusText ? `${statusLabel} • ${statusText}` : statusLabel
+    identity.appendChild(presenceDetail)
+  }
   identity.appendChild(meta)
   main.appendChild(avatar)
   main.appendChild(identity)
@@ -127,7 +138,10 @@ function buildMemberRow(item, options) {
   line.dataset.canManageRoles = canManageRoles ? "true" : "false"
   line.dataset.canMuteMembers = canMuteMembers ? "true" : "false"
   line.dataset.canKickMembers = canKickMembers ? "true" : "false"
-  line.title = isSelf ? "Ini profil kamu" : "Klik kanan untuk opsi moderasi"
+  line.dataset.joinedAt = joinedAt
+  line.dataset.presenceStatusKey = statusKey
+  line.dataset.presenceStatusText = statusText
+  line.title = isSelf ? "Ini profil kamu" : "Klik untuk profil • klik kanan untuk moderasi"
 
   line.tabIndex = 0
   line.setAttribute("role", "group")
@@ -136,11 +150,30 @@ function buildMemberRow(item, options) {
     memberUsernameInput.value = usernameText
     memberUsernameInput.focus()
   }
-  line.addEventListener("click", pickMember)
+  const openProfile = () => {
+    window.dispatchEvent(
+      new CustomEvent("privix:member-profile-open", {
+        detail: {
+          username: usernameText,
+          role_name: role,
+          joined_at: joinedAt,
+          is_online: Boolean(item && item.is_online),
+          status_key: statusKey,
+          status_text: statusText,
+          is_self: isSelf
+        }
+      })
+    )
+  }
+  line.addEventListener("click", () => {
+    pickMember()
+    openProfile()
+  })
   line.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault()
       pickMember()
+      openProfile()
     }
   })
   return line

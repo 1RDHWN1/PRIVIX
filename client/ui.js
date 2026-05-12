@@ -11,7 +11,8 @@ export {
   isMessageListNearBottom,
   scrollMessageListToBottom,
   trackUnreadMentionMessage,
-  syncChatJumpControls
+  syncChatJumpControls,
+  openMessageSearchPrompt
 } from "./ui/messages.js"
 export {
   setServerOptions,

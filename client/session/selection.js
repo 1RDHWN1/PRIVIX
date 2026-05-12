@@ -57,7 +57,13 @@ import {
 } from "../dom.js"
 import { SERVER_KEY, CHANNEL_KEY, CHANNEL_TYPE_VOICE } from "../constants.js"
 import { state } from "../state.js"
-import { setChannelOptions, setElementHidden, setSoftButtonHidden } from "../ui.js"
+import {
+  setChannelOptions,
+  setElementHidden,
+  setSoftButtonHidden,
+  syncChannelListSelection,
+  syncServerListSelection
+} from "../ui.js"
 import { hasServerPermission, canLeaveServer, isServerOwner } from "../permissions.js"
 import { getCurrentUserMuteInfo, refreshMuteButtonLabel } from "../members.js"
 import { formatMuteRemaining } from "../utils.js"
@@ -86,6 +92,7 @@ function applySelectionFromStorage() {
   }
 
   serverSelect.value = String(selectedServer.id)
+  syncServerListSelection()
   const channels = Array.isArray(selectedServer.channels) ? selectedServer.channels : []
   setChannelOptions(channels)
 
@@ -96,6 +103,7 @@ function applySelectionFromStorage() {
   } else if (channelSelect.options.length > 0) {
     channelSelect.selectedIndex = 0
   }
+  syncChannelListSelection()
 
   localStorage.setItem(SERVER_KEY, String(selectedServer.id))
   if (channelSelect.value) {

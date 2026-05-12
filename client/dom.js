@@ -38,8 +38,12 @@ const channelList = document.getElementById("channel-list")
 const activeChannelName = document.getElementById("active-channel-name")
 const activeChannelType = document.getElementById("active-channel-type")
 const activeChannelPresence = document.getElementById("active-channel-presence")
+const mobileSearchBtn = document.getElementById("mobile-search-btn")
+const drawguessToggleBtn = document.getElementById("drawguess-toggle-btn")
 const mobileBackBtn = document.getElementById("mobile-back-btn")
 const mobileMembersBtn = document.getElementById("mobile-members-btn")
+const mobileMembersCloseBtn = document.getElementById("mobile-members-close-btn")
+const mobileGameBtn = document.getElementById("mobile-game-btn")
 const mobileMembersBackdrop = document.getElementById("mobile-members-backdrop")
 const chatRoot = document.querySelector(".chat")
 const channelNameInput = document.getElementById("channel-name")
@@ -57,6 +61,8 @@ const chatJumpMentionCount = document.getElementById("chat-jump-mention-count")
 const chatJumpToBottomBtn = document.getElementById("chat-jump-to-bottom-btn")
 const typingIndicator = document.getElementById("typing-indicator")
 const usernameInput = document.getElementById("username")
+const userStatusSelect = document.getElementById("user-status")
+const userStatusTextInput = document.getElementById("user-status-text")
 const connectionStatus = document.getElementById("connection-status")
 const memberList = document.getElementById("member-list")
 const memberOnlineSummary = document.getElementById("member-online-summary")
@@ -97,6 +103,16 @@ const memberContextMenu = document.getElementById("member-context-menu")
 const memberContextMenuTitle = document.getElementById("member-context-menu-title")
 const memberContextMenuSubtitle = document.getElementById("member-context-menu-subtitle")
 const memberContextMenuItems = Array.from(document.querySelectorAll("[data-member-menu-action]"))
+const memberProfilePopover = document.getElementById("member-profile-popover")
+const memberProfileCloseBtn = document.getElementById("member-profile-close")
+const memberProfileAvatar = document.getElementById("member-profile-avatar")
+const memberProfileName = document.getElementById("member-profile-name")
+const memberProfileRole = document.getElementById("member-profile-role")
+const memberProfilePresence = document.getElementById("member-profile-presence")
+const memberProfileJoined = document.getElementById("member-profile-joined")
+const memberProfileMentionBtn = document.getElementById("member-profile-mention")
+const memberProfileCopyBtn = document.getElementById("member-profile-copy")
+const memberProfileModerateBtn = document.getElementById("member-profile-moderate")
 const voicePanel = document.getElementById("voice-panel")
 const voiceStatus = document.getElementById("voice-status")
 const voiceNetworkPill = document.getElementById("voice-network-pill")
@@ -113,6 +129,35 @@ const voiceStageGrid = document.getElementById("voice-stage-grid")
 const voiceStageTitle = document.getElementById("voice-stage-title")
 const voiceStageSubtitle = document.getElementById("voice-stage-subtitle")
 const voiceJoinHeroBtn = document.getElementById("voice-join-hero")
+const drawguessPanel = document.getElementById("drawguess-panel")
+const gameRoomHint = document.getElementById("game-room-hint")
+const gameItemDrawguess = document.getElementById("game-item-drawguess")
+const gameItemWordrush = document.getElementById("game-item-wordrush")
+const gameItemDrawguessPlayers = document.getElementById("game-item-drawguess-players")
+const gameItemWordrushPlayers = document.getElementById("game-item-wordrush-players")
+const gameRoomScreenHead = document.getElementById("game-room-screen-head")
+const gameRoomScreenBackBtn = document.getElementById("game-room-screen-back")
+const gameRoomScreenTitle = document.getElementById("game-room-screen-title")
+const gameRoomScreenPlayers = document.getElementById("game-room-screen-players")
+const drawguessRoomPanel = document.getElementById("drawguess-room-panel")
+const wordrushRoomPanel = document.getElementById("wordrush-room-panel")
+const drawguessStatus = document.getElementById("drawguess-status")
+const drawguessStartBtn = document.getElementById("drawguess-start-btn")
+const drawguessClearBtn = document.getElementById("drawguess-clear-btn")
+const drawguessWord = document.getElementById("drawguess-word")
+const drawguessTimer = document.getElementById("drawguess-timer")
+const drawguessCanvas = document.getElementById("drawguess-canvas")
+const drawguessGuessInput = document.getElementById("drawguess-guess-input")
+const drawguessGuessBtn = document.getElementById("drawguess-guess-btn")
+const drawguessScore = document.getElementById("drawguess-score")
+const wordrushStatus = document.getElementById("wordrush-status")
+const wordrushDifficultySelect = document.getElementById("wordrush-difficulty")
+const wordrushStartBtn = document.getElementById("wordrush-start-btn")
+const wordrushPrompt = document.getElementById("wordrush-prompt")
+const wordrushTimer = document.getElementById("wordrush-timer")
+const wordrushGuessInput = document.getElementById("wordrush-guess-input")
+const wordrushGuessBtn = document.getElementById("wordrush-guess-btn")
+const wordrushScore = document.getElementById("wordrush-score")
 const voiceRoster = document.getElementById("voice-roster")
 const voiceQuality = document.getElementById("voice-quality")
 const voiceSettingsToggleBtn = document.getElementById("voice-settings-toggle")
@@ -185,8 +230,12 @@ export {
   activeChannelName,
   activeChannelType,
   activeChannelPresence,
+  mobileSearchBtn,
+  drawguessToggleBtn,
   mobileBackBtn,
   mobileMembersBtn,
+  mobileMembersCloseBtn,
+  mobileGameBtn,
   mobileMembersBackdrop,
   chatRoot,
   channelNameInput,
@@ -204,6 +253,8 @@ export {
   chatJumpToBottomBtn,
   typingIndicator,
   usernameInput,
+  userStatusSelect,
+  userStatusTextInput,
   connectionStatus,
   memberList,
   memberOnlineSummary,
@@ -244,6 +295,16 @@ export {
   memberContextMenuTitle,
   memberContextMenuSubtitle,
   memberContextMenuItems,
+  memberProfilePopover,
+  memberProfileCloseBtn,
+  memberProfileAvatar,
+  memberProfileName,
+  memberProfileRole,
+  memberProfilePresence,
+  memberProfileJoined,
+  memberProfileMentionBtn,
+  memberProfileCopyBtn,
+  memberProfileModerateBtn,
   voicePanel,
   voiceStatus,
   voiceNetworkPill,
@@ -260,6 +321,35 @@ export {
   voiceStageTitle,
   voiceStageSubtitle,
   voiceJoinHeroBtn,
+  drawguessPanel,
+  gameRoomHint,
+  gameItemDrawguess,
+  gameItemWordrush,
+  gameItemDrawguessPlayers,
+  gameItemWordrushPlayers,
+  gameRoomScreenHead,
+  gameRoomScreenBackBtn,
+  gameRoomScreenTitle,
+  gameRoomScreenPlayers,
+  drawguessRoomPanel,
+  wordrushRoomPanel,
+  drawguessStatus,
+  drawguessStartBtn,
+  drawguessClearBtn,
+  drawguessWord,
+  drawguessTimer,
+  drawguessCanvas,
+  drawguessGuessInput,
+  drawguessGuessBtn,
+  drawguessScore,
+  wordrushStatus,
+  wordrushDifficultySelect,
+  wordrushStartBtn,
+  wordrushPrompt,
+  wordrushTimer,
+  wordrushGuessInput,
+  wordrushGuessBtn,
+  wordrushScore,
   voiceRoster,
   voiceQuality,
   voiceSettingsToggleBtn,
