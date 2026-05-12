@@ -3869,6 +3869,12 @@ io.on("connection", (socket) => {
       const scoreMap = getDrawGuessScoreMap(roomKey)
       const previous = Number(scoreMap.get(username) || 0)
       scoreMap.set(username, previous + 10)
+
+      if (session.drawerUsername) {
+        const previousDrawer = Number(scoreMap.get(session.drawerUsername) || 0)
+        scoreMap.set(session.drawerUsername, previousDrawer + 5)
+      }
+
       await endDrawGuessRound(roomKey, "solved", username)
       reply({ ok: true, correct: true, points: 10 })
     } catch (error) {

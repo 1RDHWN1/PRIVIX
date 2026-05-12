@@ -482,6 +482,11 @@ body{
   flex-direction:column;
   height:100%;
   min-height:100%;
+  gap:8px;
+}
+
+.drawguess-room-panel[hidden]{
+  display:none;
 }
 
 .wordrush-room-panel{
@@ -639,12 +644,13 @@ body{
 }
 
 .drawguess-canvas-wrap{
-  margin-top:8px;
   border:1px solid rgba(255, 255, 255, 0.08);
   border-radius:12px;
   overflow:hidden;
   background:#111724;
   flex:1;
+  min-height:200px;
+  max-height:55vh;
   display:flex;
   flex-direction:column;
 }
@@ -5893,7 +5899,8 @@ button{
 
   .drawguess-room-panel{
     border-radius:12px;
-    padding:9px;
+    padding:8px;
+    gap:6px;
   }
 
   .wordrush-room-panel{
@@ -5942,8 +5949,13 @@ button{
     font-size:10px;
   }
 
+  .drawguess-canvas-wrap{
+    max-height:45vh;
+    min-height:140px;
+  }
+
   #drawguess-canvas{
-    height:150px;
+    height:100%;
   }
 
   .drawguess-guess-row button{

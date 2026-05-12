@@ -304,6 +304,12 @@ function renderDrawguessUi() {
   if (drawguessToggleBtn) {
     drawguessToggleBtn.classList.toggle("is-live", drawguessState.active)
   }
+  if (drawguessScore) {
+    const scores = Array.isArray(drawguessState.scores) ? drawguessState.scores : []
+    drawguessScore.textContent = scores.length
+      ? `Score: ${scores.map((item) => `${item.username} ${item.score}`).join(" • ")}`
+      : "Score: belum ada poin"
+  }
 }
 
 function renderWordrushUi() {
