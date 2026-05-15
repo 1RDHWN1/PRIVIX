@@ -1,10 +1,8 @@
 const path = require("path")
-const sqlite3 = require("sqlite3").verbose()
 
-const DB_CLIENT = String(process.env.PRIVIX_DB_CLIENT || (process.env.DATABASE_URL ? "postgres" : "sqlite"))
-  .trim()
-  .toLowerCase()
-const isPostgres = DB_CLIENT === "postgres" || DB_CLIENT === "pg"
+const DB_CLIENT = String(process.env.PRIVIX_DB_CLIENT || "postgres").trim().toLowerCase()
+const isSqlite = DB_CLIENT === "sqlite" || DB_CLIENT === "sqlite3"
+const isPostgres = !isSqlite
 
 let sqliteDb = null
 let pgPool = null
@@ -12,27 +10,54 @@ let pgTxClient = null
 
 function createSqliteDb() {
   if (sqliteDb) return sqliteDb
+  const sqlite3 = require("sqlite3").verbose()
   const dbPath = process.env.PRIVIX_DB_PATH || path.join(__dirname, "..", "..", "privix.db")
   sqliteDb = new sqlite3.Database(dbPath)
   return sqliteDb
 }
 
+function connectionStringHasPassword(connectionString) {
+  if (!connectionString) return false
+  try {
+    return Boolean(new URL(connectionString).password)
+  } catch {
+    return false
+  }
+}
+
 function createPgPool() {
   if (pgPool) return pgPool
   const { Pool } = require("pg")
-  pgPool = new Pool({
-    connectionString: process.env.DATABASE_URL || process.env.PRIVIX_DATABASE_URL,
+  const connectionString = process.env.DATABASE_URL || process.env.PRIVIX_DATABASE_URL
+  const passwordFromEnv = process.env.PGPASSWORD
+  const hasConfiguredPassword =
+    connectionStringHasPassword(connectionString) ||
+    (passwordFromEnv !== undefined && String(passwordFromEnv).length > 0)
+  const allowPasswordless =
+    String(process.env.PRIVIX_ALLOW_PASSWORDLESS_PG || "").trim() === "1"
+
+  if (!hasConfiguredPassword && !allowPasswordless) {
+    throw new Error(
+      "PostgreSQL dipilih, tapi password belum dikonfigurasi. Set DATABASE_URL dengan password atau isi PGPASSWORD."
+    )
+  }
+
+  const config = {
+    connectionString,
     host: process.env.PGHOST,
     port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
     database: process.env.PGDATABASE,
     user: process.env.PGUSER,
-    password: process.env.PGPASSWORD,
     ssl:
       String(process.env.PGSSL || "").trim() === "1" ||
       String(process.env.PGSSLMODE || "").trim().toLowerCase() === "require"
         ? { rejectUnauthorized: false }
         : undefined
-  })
+  }
+  if (passwordFromEnv !== undefined) {
+    config.password = String(passwordFromEnv)
+  }
+  pgPool = new Pool(config)
   return pgPool
 }
 

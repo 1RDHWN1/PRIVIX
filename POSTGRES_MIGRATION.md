@@ -1,6 +1,6 @@
 # Migrasi Privix ke PostgreSQL
 
-Privix sekarang bisa memakai SQLite atau PostgreSQL.
+Privix sekarang memakai PostgreSQL sebagai default runtime. SQLite hanya dipakai kalau sengaja diset untuk migrasi/dev lama.
 
 ## 1. Siapkan PostgreSQL
 
@@ -8,7 +8,6 @@ Buat database kosong, misalnya `privix`.
 
 ```powershell
 $env:DATABASE_URL="postgres://USER:PASSWORD@HOST:5432/privix"
-$env:PRIVIX_DB_CLIENT="postgres"
 ```
 
 Atau pakai variabel bawaan `pg`:
@@ -19,7 +18,6 @@ $env:PGPORT="5432"
 $env:PGDATABASE="privix"
 $env:PGUSER="postgres"
 $env:PGPASSWORD="password"
-$env:PRIVIX_DB_CLIENT="postgres"
 ```
 
 ## 2. Migrasi data SQLite lama
@@ -41,7 +39,6 @@ npm run migrate:postgres
 ## 3. Jalankan app memakai PostgreSQL
 
 ```powershell
-$env:PRIVIX_DB_CLIENT="postgres"
 npm start
 ```
 
@@ -53,7 +50,7 @@ Privix server running on port 3000 (postgres)
 
 ## Catatan
 
-- SQLite tetap bisa dipakai kalau `PRIVIX_DB_CLIENT` dan `DATABASE_URL` tidak diset.
+- Runtime default adalah PostgreSQL. SQLite tetap bisa dipakai hanya kalau `PRIVIX_DB_CLIENT=sqlite` diset eksplisit.
 - Jangan migrasi berkali-kali ke database production tanpa backup.
 - Script migrasi melakukan upsert berdasarkan `id`, jadi bisa dipakai ulang untuk dev, tapi tetap lebih aman migrasi sekali ke database kosong.
 - Kalau SQLite lama masih punya duplikat username, script akan menggabungkan user duplikat ke user pertama agar tidak menabrak unique constraint PostgreSQL.
