@@ -11,9 +11,13 @@ import {
   clearAllVoicePresence
 } from "./presenceStore.js"
 
+const PRESENCE_INITIAL_RETRY_MS = 4000
+const PRESENCE_REFRESH_MS = 15000
+const PRESENCE_IDLE_REFRESH_MS = 30000
+
 function stopPresencePolling() {
   if (voiceState.presenceTimerId) {
-    clearInterval(voiceState.presenceTimerId)
+    clearTimeout(voiceState.presenceTimerId)
     voiceState.presenceTimerId = 0
   }
 }
@@ -64,9 +68,15 @@ function applyPresence(peers, { notifyChanges = true } = {}) {
 }
 
 async function fetchVoicePresence() {
-  if (!voiceState.isVoiceChannel || !voiceState.isConnected || !voiceState.isReady) return
-  if (voiceState.isJoined || voiceState.isConnecting) return
-  if (!voiceState.serverId || !voiceState.channelName) return
+  if (!voiceState.isVoiceChannel || !voiceState.isConnected || !voiceState.isReady) {
+    return { ok: false, peerCount: 0 }
+  }
+  if (voiceState.isJoined || voiceState.isConnecting) {
+    return { ok: false, peerCount: 0 }
+  }
+  if (!voiceState.serverId || !voiceState.channelName) {
+    return { ok: false, peerCount: 0 }
+  }
 
   const key = `${voiceState.serverId}:${voiceState.channelName}`
   voiceState.lastPresenceKey = key
@@ -98,15 +108,41 @@ async function fetchVoicePresence() {
     }
 
     applyPresence(peers)
-  } catch {}
+    return { ok: true, peerCount: peers.length }
+  } catch {
+    return { ok: false, peerCount: 0 }
+  }
+}
+
+function resolveNextPresenceDelay(result) {
+  if (!result || !result.ok) return PRESENCE_INITIAL_RETRY_MS
+  return Number(result.peerCount || 0) > 0 ? PRESENCE_REFRESH_MS : PRESENCE_IDLE_REFRESH_MS
+}
+
+function schedulePresencePoll(delayMs) {
+  if (!voiceState.isVoiceChannel || voiceState.isJoined || voiceState.isConnecting) return
+  if (voiceState.presenceTimerId) return
+  voiceState.presenceTimerId = setTimeout(() => {
+    voiceState.presenceTimerId = 0
+    fetchVoicePresence()
+      .then((result) => {
+        schedulePresencePoll(resolveNextPresenceDelay(result))
+      })
+      .catch(() => {
+        schedulePresencePoll(PRESENCE_INITIAL_RETRY_MS)
+      })
+  }, Math.max(1000, Number(delayMs) || PRESENCE_REFRESH_MS))
 }
 
 function startPresencePolling() {
   if (voiceState.presenceTimerId) return
   fetchVoicePresence()
-  voiceState.presenceTimerId = setInterval(() => {
-    fetchVoicePresence()
-  }, 2000)
+    .then((result) => {
+      schedulePresencePoll(resolveNextPresenceDelay(result))
+    })
+    .catch(() => {
+      schedulePresencePoll(PRESENCE_INITIAL_RETRY_MS)
+    })
 }
 
 export {

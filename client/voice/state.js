@@ -22,6 +22,8 @@ const voiceState = {
   iceFailureNotified: false,
   audioPlaybackPromptShown: false,
   outputDeviceFailureNotified: false,
+  meshTurnWarningShown: false,
+  meshScaleWarningShown: false,
   audioContext: null,
   analyserLoopId: 0,
   presenceTimerId: 0,
@@ -86,6 +88,7 @@ const voiceState = {
   sfuTrackBindings: new Map(),
   sfuSdkModule: null,
   sfuSdkPromise: null,
+  lastSfuError: "",
   participants: new Map()
 }
 

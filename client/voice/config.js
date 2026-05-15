@@ -45,12 +45,16 @@ function resolveVoiceRuntimeConfig() {
   const provider = String(fromWindow.sfu_provider || "mesh").trim().toLowerCase()
   const wsUrl = String(fromWindow.sfu_ws_url || "").trim()
   const clientSdkUrl = String(fromWindow.sfu_client_sdk_url || "").trim()
+  const hasTurn = Boolean(fromWindow.has_turn)
+  const meshPeerSoftLimit = Number(fromWindow.mesh_peer_soft_limit || 4)
 
   return {
     useSfu,
     provider: useSfu ? (provider || "livekit") : "mesh",
     wsUrl,
-    clientSdkUrl
+    clientSdkUrl,
+    hasTurn,
+    meshPeerSoftLimit: Number.isFinite(meshPeerSoftLimit) && meshPeerSoftLimit > 0 ? meshPeerSoftLimit : 4
   }
 }
 

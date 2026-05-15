@@ -154,6 +154,9 @@ function resolveNetworkPillState() {
   if (summary.level === "Fair") {
     return { text: `${rtt} ms`, levelClass: "is-fair" }
   }
+  if (summary.level !== "Good" && summary.level !== "Solo") {
+    return { text: "...", levelClass: "is-idle" }
+  }
 
   return { text: `${rtt} ms`, levelClass: "is-good" }
 }
@@ -539,6 +542,43 @@ function getStreamRenderToken(stream) {
     )
     .sort()
     .join("|")
+}
+
+function getStageTileRenderSignature(participant) {
+  const stream = getParticipantStream(participant)
+  const muted = participant.isSelf ? !voiceState.canSpeak || voiceState.isMuted : participant.isMuted
+  const hasVideo = participant && participant.isScreenTile
+    ? hasLiveVideoTrack(stream)
+    : Boolean(participant.isCameraEnabled) && hasLiveVideoTrack(stream)
+  return [
+    participant.id,
+    participant.sourceParticipantId || "",
+    participant.username || "",
+    participant.isSelf ? 1 : 0,
+    participant.isScreenTile ? 1 : 0,
+    muted ? 1 : 0,
+    participant.isCameraEnabled ? 1 : 0,
+    participant.isScreenSharing ? 1 : 0,
+    hasVideo ? 1 : 0,
+    getStreamRenderToken(stream)
+  ].join("::")
+}
+
+function applyStageTileLiveState(tile, participant) {
+  if (!tile || !participant) return
+  const participantId = participant.sourceParticipantId || participant.id
+  const isMuted = participant.isSelf ? !voiceState.canSpeak || voiceState.isMuted : participant.isMuted
+  tile.classList.toggle("is-muted", Boolean(isMuted))
+  tile.classList.toggle("is-speaking", Boolean(voiceState.speakingState.get(participantId)))
+
+  const analyserEntry = voiceState.analysers.get(participantId)
+  const visualLevel = Number(analyserEntry && analyserEntry.lastVisualLevel)
+  if (Number.isFinite(visualLevel) && visualLevel > 0) {
+    tile.style.setProperty("--voice-speaking-level", String(Math.min(1, Math.max(0, visualLevel))))
+  } else {
+    tile.style.setProperty("--voice-speaking-level", "0")
+  }
+  applyTileQualityBadge(tile, participant)
 }
 
 function getRosterSignature() {
@@ -1056,8 +1096,8 @@ function updateVoiceStageUi(options = {}) {
   }
 
   if (voiceStageGrid) {
-    voiceStageGrid.innerHTML = ""
-    voiceState.tileEls.clear()
+    const previousTileEls = new Map(voiceState.tileEls)
+    const nextTileEls = new Map()
     const layout = getAdaptiveStageLayout(tiles.length)
     const focusSpan = 2
     const renderedTiles = isScreenExpanded
@@ -1106,7 +1146,17 @@ function updateVoiceStageUi(options = {}) {
     setElementHidden(voiceStageGrid, tiles.length === 0)
 
     renderedTiles.forEach((participant) => {
-      const tile = createStageTile(participant)
+      const renderSignature = getStageTileRenderSignature(participant)
+      let tile = previousTileEls.get(participant.id)
+      if (!tile || tile.dataset.renderSignature !== renderSignature) {
+        if (tile) {
+          tile.remove()
+        }
+        tile = createStageTile(participant)
+        tile.dataset.renderSignature = renderSignature
+      } else {
+        applyStageTileLiveState(tile, participant)
+      }
       if (isScreenExpanded) {
         tile.classList.toggle("is-featured", participant.id === voiceState.expandedScreenShareId)
         tile.classList.toggle("is-secondary", participant.id !== voiceState.expandedScreenShareId)
@@ -1115,7 +1165,16 @@ function updateVoiceStageUi(options = {}) {
         tile.classList.toggle("is-secondary", participant.id !== voiceState.stageFocusId)
       }
       voiceStageGrid.appendChild(tile)
+      nextTileEls.set(participant.id, tile)
     })
+
+    Array.from(voiceStageGrid.children).forEach((child) => {
+      const peerId = child && child.dataset ? child.dataset.peerId : ""
+      if (!peerId || nextTileEls.get(peerId) !== child) {
+        child.remove()
+      }
+    })
+    voiceState.tileEls = nextTileEls
   }
 }
 

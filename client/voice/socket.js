@@ -1,4 +1,5 @@
 import { socket } from "../socket.js"
+import { notify } from "../notice.js"
 import { voiceState } from "./state.js"
 import { playNotificationTone } from "./audio.js"
 import { applyPresence, setChannelVoicePresence } from "./presence.js"
@@ -15,6 +16,7 @@ import { initVoiceSettings } from "./settings.js"
 import { initPushToTalk } from "./ptt.js"
 import { voiceDebug } from "./debug.js"
 import { applySfuRemoteStreamState } from "./sfu.js"
+import { VOICE_RUNTIME_CONFIG } from "./config.js"
 
 function syncRoomStartedAtTs(rawValue) {
   const ts = Number(rawValue || 0)
@@ -27,6 +29,15 @@ function syncServerClock(rawValue) {
   const ts = Number(rawValue || 0)
   if (!Number.isFinite(ts) || ts <= 0) return
   voiceState.serverClockOffsetMs = ts - Date.now()
+}
+
+function maybeNotifyMeshScale() {
+  if (voiceState.voiceMode !== "mesh" || !voiceState.isJoined) return
+  const softLimit = Number(VOICE_RUNTIME_CONFIG.meshPeerSoftLimit || 4)
+  if (voiceState.participants.size >= softLimit && !voiceState.meshScaleWarningShown) {
+    voiceState.meshScaleWarningShown = true
+    notify("Room voice mulai ramai. Aktifkan SFU untuk koneksi yang lebih ringan dan stabil.")
+  }
 }
 
 function bindVoiceSocketHandlers() {
@@ -67,6 +78,7 @@ function bindVoiceSocketHandlers() {
       ensurePeerConnection(peerId, { isInitiator: false }).catch(() => {})
       playNotificationTone("join")
     }
+    maybeNotifyMeshScale()
     voiceDebug("socket event: voice user joined", {
       peerId,
       username: username || "Unknown",

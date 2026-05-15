@@ -20,6 +20,7 @@ function mergeSummary(items) {
   }
 
   let worstLevel = "Good"
+  let hasKnownLevel = false
   let maxLoss = 0
   let maxJitter = 0
   let maxRtt = 0
@@ -28,12 +29,19 @@ function mergeSummary(items) {
     maxLoss = Math.max(maxLoss, entry.lossPct || 0)
     maxJitter = Math.max(maxJitter, entry.jitterMs || 0)
     maxRtt = Math.max(maxRtt, entry.rttMs || 0)
+    if (entry.level === "Good" || entry.level === "Fair" || entry.level === "Poor") {
+      hasKnownLevel = true
+    }
     if (entry.level === "Poor") {
       worstLevel = "Poor"
     } else if (entry.level === "Fair" && worstLevel === "Good") {
       worstLevel = "Fair"
     }
   })
+
+  if (!hasKnownLevel) {
+    worstLevel = "Unknown"
+  }
 
   return { level: worstLevel, rttMs: maxRtt, jitterMs: maxJitter, lossPct: maxLoss }
 }
@@ -69,16 +77,23 @@ async function pollQuality() {
 
   if (voiceState.voiceMode === "sfu") {
     const peerCount = Math.max(0, voiceState.participants.size - 1)
-    const level = peerCount > 0 ? "Good" : "Solo"
+    const entries = Array.from(voiceState.peerStats.values())
+      .filter((entry) => entry && entry.source === "sfu")
+    const summary = entries.length > 0
+      ? mergeSummary(entries)
+      : {
+          level: peerCount > 0 ? "Unknown" : "Solo",
+          rttMs: 0,
+          jitterMs: 0,
+          lossPct: 0
+        }
     voiceState.qualitySummary = {
-      level,
-      rttMs: 0,
-      jitterMs: 0,
-      lossPct: 0,
+      ...summary,
       updatedAt: Date.now()
     }
+    syncAdaptiveCameraQuality(voiceState.qualitySummary).catch(() => {})
     updateVoiceUi()
-    return { level, peerCount }
+    return { level: summary.level, peerCount }
   }
 
   const entries = []

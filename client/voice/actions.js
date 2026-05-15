@@ -20,7 +20,7 @@ import {
   clearAllVoicePresence
 } from "./presence.js"
 import { ensurePeerConnection, resetPeers, stopLocalStream, syncOutgoingVideoTrack } from "./rtc.js"
-import { isVoiceSfuEnabled } from "./config.js"
+import { VOICE_RUNTIME_CONFIG, isVoiceSfuEnabled } from "./config.js"
 import { joinSfuVoiceRoom, leaveSfuVoiceRoom } from "./sfu.js"
 import {
   createLocalAudioStream,
@@ -60,6 +60,71 @@ function emitScreenState() {
   voiceDebug("emit screen state", payload)
 }
 
+async function prepareLocalAudioAfterJoin({ silent = false } = {}) {
+  if (!voiceState.canSpeak) {
+    voiceState.localStream = null
+    voiceState.rawStream = null
+    voiceState.isMuted = true
+    return false
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    voiceState.canSpeak = false
+    voiceState.localStream = null
+    voiceState.rawStream = null
+    voiceState.isMuted = true
+    if (!silent) {
+      notify("Browser tidak mendukung input suara. Bergabung sebagai pendengar.")
+    }
+    return false
+  }
+
+  try {
+    const result = await createLocalAudioStream()
+    if (!result) {
+      voiceState.canSpeak = false
+      voiceState.localStream = null
+      voiceState.rawStream = null
+      voiceState.isMuted = true
+      if (!silent) {
+        notify("Browser tidak mendukung input suara. Bergabung sebagai pendengar.")
+      }
+      return false
+    }
+
+    voiceState.localStream = result.stream
+    voiceState.rawStream = result.rawStream
+    voiceState.inputGainNode = result.gainNode
+    voiceState.inputSourceNode = result.sourceNode
+    voiceState.isMuted = false
+    voiceState.selfId = socket.id
+    attachAnalyser(socket.id, voiceState.localStream)
+    return true
+  } catch (error) {
+    voiceState.canSpeak = false
+    voiceState.localStream = null
+    voiceState.rawStream = null
+    voiceState.isMuted = true
+    if (!silent) {
+      notify("Mic tidak bisa diakses. Bergabung sebagai pendengar.")
+    }
+    return false
+  }
+}
+
+function maybeNotifyMeshReadiness(peerCount) {
+  if (voiceState.voiceMode !== "mesh") return
+  if (!VOICE_RUNTIME_CONFIG.hasTurn && !voiceState.meshTurnWarningShown) {
+    voiceState.meshTurnWarningShown = true
+    notify("Voice mesh berjalan tanpa TURN. Beberapa jaringan NAT ketat mungkin gagal tersambung.")
+  }
+  const softLimit = Number(VOICE_RUNTIME_CONFIG.meshPeerSoftLimit || 4)
+  if (peerCount >= softLimit && !voiceState.meshScaleWarningShown) {
+    voiceState.meshScaleWarningShown = true
+    notify("Room voice mulai ramai. Aktifkan SFU untuk koneksi yang lebih ringan dan stabil.")
+  }
+}
+
 async function joinVoiceChannel({ silent = false } = {}) {
   voiceDebug("join voice requested", {
     isVoiceChannel: voiceState.isVoiceChannel,
@@ -86,60 +151,14 @@ async function joinVoiceChannel({ silent = false } = {}) {
   voiceState.isConnecting = true
   updateVoiceUi()
 
-  try {
-    if (voiceState.canSpeak) {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        voiceState.canSpeak = false
-        voiceState.localStream = null
-        voiceState.rawStream = null
-        voiceState.isMuted = true
-        if (!silent) {
-          notify("Browser tidak mendukung input suara. Bergabung sebagai pendengar.")
-        }
-      } else {
-        const result = await createLocalAudioStream()
-        if (!result) {
-          voiceState.canSpeak = false
-          voiceState.localStream = null
-          voiceState.rawStream = null
-          voiceState.isMuted = true
-          if (!silent) {
-            notify("Browser tidak mendukung input suara. Bergabung sebagai pendengar.")
-          }
-        } else {
-          voiceState.localStream = result.stream
-          voiceState.rawStream = result.rawStream
-          voiceState.inputGainNode = result.gainNode
-          voiceState.inputSourceNode = result.sourceNode
-          voiceState.isMuted = false
-        }
-        voiceState.selfId = socket.id
-        if (voiceState.localStream) {
-          attachAnalyser(socket.id, voiceState.localStream)
-        }
-      }
-    } else {
-      voiceState.localStream = null
-      voiceState.rawStream = null
-      voiceState.isMuted = true
-    }
-  } catch (error) {
-    voiceState.canSpeak = false
-    voiceState.localStream = null
-    voiceState.rawStream = null
-    voiceState.isMuted = true
-    if (!silent) {
-      notify("Mic tidak bisa diakses. Bergabung sebagai pendengar.")
-    }
-  }
-
+  let joinedServerRoom = false
   try {
     const result = await emitWithTimeout(
       "voice join",
       {
         server_id: voiceState.serverId,
         channel: voiceState.channelName,
-        is_muted: !voiceState.canSpeak || voiceState.isMuted,
+        is_muted: true,
         is_camera_enabled: Boolean(voiceState.isCameraEnabled && voiceState.localCameraTrack),
         is_screen_sharing: Boolean(voiceState.isScreenSharing && voiceState.localScreenTrack)
       },
@@ -148,15 +167,15 @@ async function joinVoiceChannel({ silent = false } = {}) {
         failMessage: "Gagal join voice channel"
       }
     )
+    joinedServerRoom = true
 
     voiceState.canSpeak = Boolean(result.can_speak)
-    if (!voiceState.canSpeak) {
-      if (voiceState.localStream) {
-        stopLocalStream()
-        stopExistingInputPipeline()
-        removeAnalyser(socket.id)
-      }
-      voiceState.isMuted = true
+    await prepareLocalAudioAfterJoin({ silent })
+    if (!voiceState.isConnecting) {
+      stopLocalStream()
+      stopExistingInputPipeline()
+      removeAnalyser(socket.id)
+      return
     }
 
     resetParticipants()
@@ -199,11 +218,17 @@ async function joinVoiceChannel({ silent = false } = {}) {
         isScreenSharing: Boolean(peer.is_screen_sharing)
       })
     }
+    applyPushToTalkState()
+    maybeNotifyMeshReadiness(peers.length + 1)
 
     if (voiceState.voiceMode === "sfu") {
       const connected = await joinSfuVoiceRoom()
       if (!connected) {
-        throw new Error("Gagal terhubung ke SFU room")
+        voiceState.voiceMode = "mesh"
+        const reason = voiceState.lastSfuError ? ` (${voiceState.lastSfuError})` : ""
+        if (!silent) {
+          notify(`LiveKit belum bisa tersambung, fallback ke mesh.${reason}`)
+        }
       }
     }
 
@@ -229,7 +254,6 @@ async function joinVoiceChannel({ silent = false } = {}) {
     stopPresencePolling()
     refreshDeviceOptions().catch(() => {})
     startQualityMonitoring()
-    applyPushToTalkState()
     updateVoiceUi()
     if (shouldRestoreCamera) {
       enableVoiceCamera({ silent: true }).catch(() => {})
@@ -240,6 +264,11 @@ async function joinVoiceChannel({ silent = false } = {}) {
     voiceState.joinedAtTs = 0
     stopLocalStream()
     stopExistingInputPipeline()
+    if (joinedServerRoom && socket.connected) {
+      try {
+        await emitWithTimeout("voice leave", {}, { timeoutMs: 1500, expectsOk: false })
+      } catch {}
+    }
     await leaveSfuVoiceRoom()
     resetPeers()
     resetVoiceMediaCollections()
@@ -247,6 +276,7 @@ async function joinVoiceChannel({ silent = false } = {}) {
     voiceState.iceFailureNotified = false
     voiceState.audioPlaybackPromptShown = false
     voiceState.voiceMode = "mesh"
+    voiceState.lastSfuError = ""
     stopQualityMonitoring()
     updateVoiceUi()
     if (!silent) {

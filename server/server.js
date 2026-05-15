@@ -3,6 +3,7 @@ const http = require("http")
 const { Server } = require("socket.io")
 const cors = require("cors")
 const path = require("path")
+const fs = require("fs")
 const {
   MAX_USERNAME_LENGTH,
   MAX_CHANNEL_LENGTH,
@@ -85,29 +86,77 @@ function buildIceConfig() {
 }
 
 const SFU_CONFIG = resolveSfuConfig()
+const MESH_PEER_SOFT_LIMIT = Math.max(2, Number(process.env.PRIVIX_VOICE_MESH_PEER_LIMIT || 4) || 4)
+const DEFAULT_LIVEKIT_CLIENT_SDK_URL =
+  "https://cdn.jsdelivr.net/npm/livekit-client@2.15.5/dist/livekit-client.esm.mjs"
 const SERVER_DEBUG =
   String(process.env.PRIVIX_DEBUG || "").trim() === "1" ||
   String(process.env.DEBUG_PRIVIX || "").trim() === "1"
 const LEGACY_CHANNELS_ENABLED =
   String(process.env.PRIVIX_ENABLE_LEGACY_CHANNELS || "").trim() === "1"
 
-function buildClientVoiceConfig() {
+function hasTurnServer(config) {
+  if (!config || !Array.isArray(config.iceServers)) return false
+  return config.iceServers.some((server) => {
+    const urls = Array.isArray(server && server.urls) ? server.urls : [server && server.urls]
+    return urls.some((url) => /^turns?:/i.test(String(url || "")))
+  })
+}
+
+function getClientSfuSdkUrl() {
+  if (SFU_CONFIG.clientSdkPath) {
+    return "/vendor/livekit-client.esm.mjs"
+  }
+  return SFU_CONFIG.clientSdkUrl || (SFU_CONFIG.enabled ? DEFAULT_LIVEKIT_CLIENT_SDK_URL : "")
+}
+
+function buildClientVoiceConfig(iceConfig = null) {
   return {
     use_sfu: Boolean(SFU_CONFIG.enabled),
     sfu_provider: SFU_CONFIG.provider || "livekit",
     sfu_ws_url: SFU_CONFIG.wsUrl || "",
-    sfu_client_sdk_url: SFU_CONFIG.clientSdkUrl || ""
+    sfu_client_sdk_url: getClientSfuSdkUrl(),
+    has_turn: hasTurnServer(iceConfig),
+    mesh_peer_soft_limit: MESH_PEER_SOFT_LIMIT
+  }
+}
+
+function logVoiceRuntimeReadiness() {
+  const iceConfig = buildIceConfig()
+  if (!SFU_CONFIG.enabled && !hasTurnServer(iceConfig)) {
+    console.warn("Voice mesh is running without TURN. Set PRIVIX_TURN_URLS for reliable NAT traversal.")
+  }
+  if (SFU_CONFIG.useSfu && !SFU_CONFIG.enabled) {
+    console.warn("VOICE_USE_SFU is enabled, but LiveKit config is incomplete. Falling back to mesh voice.")
+  }
+  if (SFU_CONFIG.enabled && !SFU_CONFIG.clientSdkPath && !SFU_CONFIG.clientSdkUrl) {
+    console.warn("LiveKit client SDK is using the browser CDN fallback. Set PRIVIX_LIVEKIT_CLIENT_SDK_PATH to self-host it.")
   }
 }
 
 app.get("/config.js", (req, res) => {
   const config = buildIceConfig()
-  const voiceConfig = buildClientVoiceConfig()
+  const voiceConfig = buildClientVoiceConfig(config)
   res.set("Content-Type", "application/javascript; charset=utf-8")
   const configScript = config ? JSON.stringify(config) : "null"
   res.end(
     `window.PRIVIX_ICE = ${configScript};\nwindow.PRIVIX_VOICE_CONFIG = ${JSON.stringify(voiceConfig)};`
   )
+})
+
+app.get("/vendor/livekit-client.esm.mjs", (req, res) => {
+  if (!SFU_CONFIG.clientSdkPath) {
+    res.status(404).type("text/plain").send("LiveKit client SDK path is not configured")
+    return
+  }
+  const sdkPath = path.resolve(SFU_CONFIG.clientSdkPath)
+  fs.access(sdkPath, fs.constants.R_OK, (error) => {
+    if (error) {
+      res.status(404).type("text/plain").send("LiveKit client SDK file is not readable")
+      return
+    }
+    res.sendFile(sdkPath)
+  })
 })
 
 app.use(express.static(path.join(__dirname, "..", "client")))
@@ -3021,7 +3070,7 @@ io.on("connection", (socket) => {
       }
 
       const roomName = buildSfuRoomName(serverId, channelName)
-      const token = issueLivekitToken(SFU_CONFIG, {
+      const token = await issueLivekitToken(SFU_CONFIG, {
         identity: socket.id,
         displayName: socket.data.username || "Unknown",
         roomName,
@@ -4080,6 +4129,7 @@ async function startServer() {
     await initDatabase()
     server.listen(PORT, () => {
       console.log(`Privix server running on port ${PORT} (${isPostgres ? "postgres" : "sqlite"})`)
+      logVoiceRuntimeReadiness()
     })
   } catch (error) {
     console.error("Database init failed:", error)

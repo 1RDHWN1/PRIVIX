@@ -65,6 +65,41 @@ function applyAudioOutput(audioEl) {
   }
 }
 
+function normalizeConnectionQualityLevel(rawValue) {
+  const value = String(rawValue || "").trim().toLowerCase()
+  if (!value) return "Unknown"
+  if (value.includes("excellent") || value === "good" || value === "5" || value === "4") return "Good"
+  if (value.includes("poor") || value.includes("lost") || value === "1") return "Poor"
+  if (value.includes("medium") || value.includes("fair") || value === "3" || value === "2") return "Fair"
+  return "Unknown"
+}
+
+function applySfuConnectionQuality(rawQuality, participant) {
+  const participantId = String(participant && participant.identity ? participant.identity : socket.id || "")
+  if (!participantId) return
+  const level = normalizeConnectionQualityLevel(rawQuality)
+  const entry = {
+    peerId: participantId,
+    level,
+    rttMs: 0,
+    jitterMs: 0,
+    lossPct: 0,
+    source: "sfu",
+    updatedAt: Date.now()
+  }
+  voiceState.peerStats.set(participantId, entry)
+  if (participantId === String(socket.id || voiceState.selfId || "")) {
+    voiceState.qualitySummary = {
+      level,
+      rttMs: 0,
+      jitterMs: 0,
+      lossPct: 0,
+      updatedAt: entry.updatedAt
+    }
+  }
+  updateVoiceUi()
+}
+
 function ensureRemoteAudioElement(participantId, stream) {
   if (!voiceAudio || !stream) return null
   let audioEl = voiceState.audioEls.get(participantId)
@@ -241,6 +276,12 @@ function unbindRemoteTrack(participant, publication) {
 function bindRoomEvents(sdk, room) {
   const event = sdk.RoomEvent || {}
 
+  if (event.ConnectionQualityChanged) {
+    room.on(event.ConnectionQualityChanged, (quality, participant) => {
+      applySfuConnectionQuality(quality, participant)
+    })
+  }
+
   room.on(event.TrackSubscribed, (track, publication, participant) => {
     bindRemoteTrack(sdk, track, publication, participant)
   })
@@ -395,8 +436,10 @@ async function joinSfuVoiceRoom() {
     }
     return true
   } catch (error) {
+    const message = error && error.message ? error.message : String(error)
+    voiceState.lastSfuError = message
     voiceDebug("sfu join failed", {
-      message: error && error.message ? error.message : String(error)
+      message
     })
     return false
   }
@@ -413,6 +456,7 @@ async function leaveSfuVoiceRoom() {
     } catch {}
   }
   voiceState.sfuRoom = null
+  voiceState.lastSfuError = ""
   clearAllRemoteSfuMedia()
 }
 
