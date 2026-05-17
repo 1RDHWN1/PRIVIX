@@ -6,8 +6,42 @@ import { emitWithTimeout, fetchMembersForServer, fetchAuditLogsForServer } from 
 import { getActiveServer } from "../../session.js"
 import { setMembers, resolveMuteDuration, resolveMuteReason } from "../../members.js"
 import { setAuditLogs } from "../../audit.js"
+import { formatDurationLabel } from "../../utils.js"
 
-async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reasonOverride = "") {
+function parseMuteDurationInput(value) {
+  const raw = String(value || "").trim().toLowerCase()
+  const match = raw.match(/^(\d+)\s*(m|min|menit|h|hr|hour|jam|d|day|hari)?$/)
+  if (!match) return null
+
+  const amount = Number(match[1])
+  const unit = match[2] || "m"
+  const multiplier =
+    unit === "h" || unit === "hr" || unit === "hour" || unit === "jam"
+      ? 60
+      : unit === "d" || unit === "day" || unit === "hari"
+        ? 1440
+        : 1
+  const minutes = amount * multiplier
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 10080 ? minutes : null
+}
+
+function requestCustomMuteDuration() {
+  const raw = window.prompt("Durasi mute? Contoh: 15m, 2h, 1d. Maks 7d.", "10m")
+  if (raw === null) return null
+  return parseMuteDurationInput(raw)
+}
+
+function resolveRequestedMuteDuration(targetOverride, defaultMinutes, manualDuration = null) {
+  if (manualDuration !== null) return manualDuration
+  if (!targetOverride) return resolveMuteDuration(defaultMinutes)
+  const parsed = Number(defaultMinutes)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10080) {
+    return resolveMuteDuration(10)
+  }
+  return parsed
+}
+
+async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reasonOverride = "", options = {}) {
   const activeServer = getActiveServer()
   const targetUsername = String(targetOverride || memberUsernameInput.value).trim()
 
@@ -24,7 +58,13 @@ async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reason
     return
   }
 
-  const durationMinutes = resolveMuteDuration(defaultMinutes)
+  const manualDuration = options && options.customDuration ? requestCustomMuteDuration() : null
+  if (options && options.customDuration && manualDuration === null) {
+    notify("Durasi mute tidak valid atau dibatalkan")
+    return
+  }
+
+  const durationMinutes = resolveRequestedMuteDuration(targetOverride, defaultMinutes, manualDuration)
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 10080) {
     notify("Durasi mute harus 1-10080 menit")
     return
@@ -37,7 +77,7 @@ async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reason
   }
 
   const confirmed = await confirmNotice(
-    `Mute "${targetUsername}" selama ${durationMinutes} menit di server "${activeServer.name}"?`,
+    `Mute "${targetUsername}" selama ${formatDurationLabel(durationMinutes)} di server "${activeServer.name}"?`,
     {
       title: "Mute Member",
       confirmLabel: "Mute",
@@ -74,7 +114,7 @@ async function handleMuteMember(targetOverride = "", defaultMinutes = 10, reason
     setAuditLogs(logs)
     setStatus(buildConnectedStatus(activeServer, channelSelect.value), true)
     notify(
-      `Member ${result.target_username || targetUsername} berhasil di-mute ${durationMinutes} menit`,
+      `Member ${result.target_username || targetUsername} berhasil di-mute ${formatDurationLabel(durationMinutes)}`,
       "success"
     )
   } catch (error) {

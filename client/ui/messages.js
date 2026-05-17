@@ -20,6 +20,7 @@ const CHAT_MENTION_PATTERN = /@([A-Za-z0-9_.-]{1,32})/g
 const CHAT_BOTTOM_LOCK_THRESHOLD = 56
 const CHAT_BOTTOM_CONTROL_THRESHOLD = 76
 const MOBILE_ACTIONS_QUERY = "(max-width: 760px)"
+const UNKNOWN_USER_DISPLAY_NAME = "Unknown User"
 let messageActionDismissBound = false
 let chatJumpBound = false
 const unreadMentionIds = new Set()
@@ -372,15 +373,21 @@ function createReplyPreviewNode(replyData) {
   const replyId = Number(replyData && replyData.id)
   if (!Number.isInteger(replyId) || replyId <= 0) return null
 
+  const replyUsername = String((replyData && replyData.username) || UNKNOWN_USER_DISPLAY_NAME)
   const wrap = document.createElement("button")
   wrap.type = "button"
   wrap.className = "chat-reply-preview"
   wrap.dataset.replyToMessageId = String(replyId)
+  wrap.dataset.replyAuthorKey = normalizeUserKey(replyUsername)
   wrap.setAttribute("aria-label", "Jump to replied message")
 
   const user = document.createElement("span")
   user.className = "chat-reply-preview-user"
-  user.textContent = String(replyData && replyData.username || "unknown")
+  if (replyData && replyData.author_left_server) {
+    user.classList.add("is-left-server")
+    user.title = "User sudah keluar dari server"
+  }
+  user.textContent = replyUsername
 
   const text = document.createElement("span")
   text.className = "chat-reply-preview-text"
@@ -795,12 +802,48 @@ function deleteMessageFromView(messageId) {
   syncChatJumpControls()
 }
 
+function markAuthorElementAsLeftServer(element) {
+  if (!element) return
+  element.textContent = UNKNOWN_USER_DISPLAY_NAME
+  element.classList.add("is-left-server")
+  element.title = "User sudah keluar dari server"
+}
+
+function maskMessagesFromLeftServerAuthor(username) {
+  const targetKey = normalizeUserKey(username)
+  if (!messages || !targetKey) return
+
+  messages.querySelectorAll(".chat-line").forEach((line) => {
+    if (line.dataset.authorKey === targetKey) {
+      line.dataset.authorKey = normalizeUserKey(UNKNOWN_USER_DISPLAY_NAME)
+      line.classList.remove("is-self")
+      const author = line.querySelector(".chat-author")
+      markAuthorElementAsLeftServer(author)
+
+      const avatar = line.querySelector(".chat-avatar")
+      if (avatar) {
+        const [toneA, toneB] = getAvatarTone(UNKNOWN_USER_DISPLAY_NAME)
+        avatar.style.setProperty("--chat-avatar-a", toneA)
+        avatar.style.setProperty("--chat-avatar-b", toneB)
+        avatar.textContent = getAvatarInitials(UNKNOWN_USER_DISPLAY_NAME)
+      }
+    }
+
+    line.querySelectorAll(".chat-reply-preview").forEach((preview) => {
+      if (preview.dataset.replyAuthorKey !== targetKey) return
+      preview.dataset.replyAuthorKey = normalizeUserKey(UNKNOWN_USER_DISPLAY_NAME)
+      markAuthorElementAsLeftServer(preview.querySelector(".chat-reply-preview-user"))
+    })
+  })
+}
+
 function renderMessage(data, options = {}) {
   const animate = options.animate !== false
   appendDateSeparatorIfNeeded(data && data.created_at)
 
   const div = document.createElement("div")
   div.className = "chat-line"
+  div.dataset.authorKey = normalizeUserKey(data && data.username)
   const messageId = Number(data && data.id)
   if (Number.isInteger(messageId) && messageId > 0) {
     div.dataset.messageId = String(messageId)
@@ -838,7 +881,11 @@ function renderMessage(data, options = {}) {
 
   const user = document.createElement("b")
   user.className = "chat-author"
-  user.textContent = data.username || "unknown"
+  if (data && data.author_left_server) {
+    user.classList.add("is-left-server")
+    user.title = "User sudah keluar dari server"
+  }
+  user.textContent = data.username || UNKNOWN_USER_DISPLAY_NAME
 
   const time = document.createElement("small")
   time.className = "chat-timestamp"
@@ -949,6 +996,7 @@ export {
   renderNoServerEmptyState,
   updateMessageReactions,
   deleteMessageFromView,
+  maskMessagesFromLeftServerAuthor,
   messageMentionsUser,
   initMessageJumpControls,
   resetMessageJumpState,

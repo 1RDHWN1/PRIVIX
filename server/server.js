@@ -171,6 +171,8 @@ const io = new Server(server, {
 
 const MESSAGE_REACTION_EMOJIS = ["👍", "❤️", "😂", "🔥", "👏", "🎉"]
 const MESSAGE_REACTION_EMOJI_SET = new Set(MESSAGE_REACTION_EMOJIS)
+const UNKNOWN_USER_DISPLAY_NAME = "Unknown User"
+const SYSTEM_AUTHOR_KEYS = new Set(["privix bot"])
 const RICH_STATUS_PRESETS = {
   online: "Online",
   coding: "Lagi ngoding",
@@ -792,8 +794,60 @@ async function attachReactionsToMessages(rows) {
   }))
 }
 
-async function attachReplyContextToMessages(rows) {
+function buildAuthorKey(username) {
+  return normalizeText(username).toLowerCase()
+}
+
+async function getActiveServerAuthorKeys(serverId) {
+  const resolvedServerId = Number(serverId)
+  if (!Number.isInteger(resolvedServerId) || resolvedServerId <= 0) return null
+
+  const rows = await dbAll(
+    `
+    SELECT LOWER(TRIM(u.username)) AS username_key
+    FROM server_members sm
+    JOIN users u ON u.id = sm.user_id
+    WHERE sm.server_id = ?
+    `,
+    [resolvedServerId]
+  )
+
+  return new Set(
+    (Array.isArray(rows) ? rows : [])
+      .map((row) => String((row && row.username_key) || "").trim().toLowerCase())
+      .filter(Boolean)
+  )
+}
+
+function maskUnknownAuthor(row, activeServerAuthorKeys) {
+  if (!(activeServerAuthorKeys instanceof Set)) return { ...row }
+
+  const username = String((row && row.username) || "")
+  const authorKey = buildAuthorKey(username)
+  const shouldKeepAuthor =
+    !authorKey ||
+    activeServerAuthorKeys.has(authorKey) ||
+    SYSTEM_AUTHOR_KEYS.has(authorKey)
+
+  if (shouldKeepAuthor) {
+    return { ...row, author_left_server: false }
+  }
+
+  return {
+    ...row,
+    username: UNKNOWN_USER_DISPLAY_NAME,
+    author_left_server: true
+  }
+}
+
+function maskUnknownAuthors(rows, activeServerAuthorKeys) {
   const messages = Array.isArray(rows) ? rows : []
+  return messages.map((row) => maskUnknownAuthor(row, activeServerAuthorKeys))
+}
+
+async function attachReplyContextToMessages(rows, options = {}) {
+  const messages = Array.isArray(rows) ? rows : []
+  const activeServerAuthorKeys = options.activeServerAuthorKeys || null
   const replyTargetIds = Array.from(
     new Set(
       messages
@@ -817,7 +871,7 @@ async function attachReplyContextToMessages(rows) {
   ;(replyRows || []).forEach((row) => {
     const id = Number(row && row.id)
     if (!Number.isInteger(id) || id <= 0) return
-    replyById.set(id, row)
+    replyById.set(id, maskUnknownAuthor(row, activeServerAuthorKeys))
   })
 
   return messages.map((row) => {
@@ -829,16 +883,23 @@ async function attachReplyContextToMessages(rows) {
         ? {
             id: Number(replyRow.id),
             username: String(replyRow.username || ""),
-            message: String(replyRow.message || "")
+            message: String(replyRow.message || ""),
+            author_left_server: Boolean(replyRow.author_left_server)
           }
         : null
     }
   })
 }
 
-async function enrichMessages(rows) {
-  const withReactions = await attachReactionsToMessages(rows)
-  return attachReplyContextToMessages(withReactions)
+async function enrichMessages(rows, options = {}) {
+  const serverId = Number(options && options.serverId)
+  const activeServerAuthorKeys =
+    Number.isInteger(serverId) && serverId > 0
+      ? await getActiveServerAuthorKeys(serverId)
+      : null
+  const maskedRows = maskUnknownAuthors(rows, activeServerAuthorKeys)
+  const withReactions = await attachReactionsToMessages(maskedRows)
+  return attachReplyContextToMessages(withReactions, { activeServerAuthorKeys })
 }
 const VOICE_DEBUG =
   String(process.env.PRIVIX_VOICE_DEBUG || "").trim() === "1" ||
@@ -867,6 +928,17 @@ function debugServer(scope, event, details = null) {
 
 function buildServerPresenceRoomKey(serverId) {
   return `presence:server:${Number(serverId)}`
+}
+
+function emitServerAuthorLeft(serverId, username, reason = "left") {
+  const resolvedServerId = Number(serverId)
+  const safeUsername = normalizeText(username)
+  if (!Number.isInteger(resolvedServerId) || resolvedServerId <= 0 || !safeUsername) return
+  io.to(buildServerPresenceRoomKey(resolvedServerId)).emit("server author left", {
+    server_id: resolvedServerId,
+    username: safeUsername,
+    reason: String(reason || "left")
+  })
 }
 
 function parseUsernamePayload(payload) {
@@ -1696,6 +1768,7 @@ io.on("connection", (socket) => {
       await writeAuditLog(serverId, socket.data.userId, "member_kicked", {
         target_username: targetUser.username
       })
+      emitServerAuthorLeft(serverId, targetUser.username, "kicked")
 
       const sockets = await io.fetchSockets()
       for (const s of sockets) {
@@ -2131,6 +2204,7 @@ io.on("connection", (socket) => {
       await writeAuditLog(serverId, socket.data.userId, "member_left_server", {
         username: socket.data.username
       })
+      emitServerAuthorLeft(serverId, socket.data.username, "left")
 
       if (Number(socket.data.activeServerId) === serverId) {
         if (socket.data.roomKey) {
@@ -3380,7 +3454,7 @@ io.on("connection", (socket) => {
         "SELECT id, username, message, created_at, reply_to_message_id FROM messages WHERE channel = ? ORDER BY id DESC LIMIT 20",
         [nextRoomKey]
       )
-      const historyRows = await enrichMessages(rows.reverse())
+      const historyRows = await enrichMessages(rows.reverse(), { serverId })
 
       if (socket.data.joinVersion !== joinVersion || socket.data.roomKey !== nextRoomKey) {
         reply({ ok: false, error: "Join channel dibatalkan" })
@@ -3533,11 +3607,17 @@ io.on("connection", (socket) => {
           socket.emit("system error", { message: "Pesan reply tidak ditemukan" })
           return
         }
+        const replyAuthorKeys =
+          Number.isInteger(serverId) && serverId > 0
+            ? await getActiveServerAuthorKeys(serverId)
+            : null
+        const maskedReplyRow = maskUnknownAuthor(replyRow, replyAuthorKeys)
         replyToMessageId = Number(replyRow.id)
         replyToPayload = {
           id: replyToMessageId,
-          username: String(replyRow.username || ""),
-          message: String(replyRow.message || "")
+          username: String(maskedReplyRow.username || ""),
+          message: String(maskedReplyRow.message || ""),
+          author_left_server: Boolean(maskedReplyRow.author_left_server)
         }
       }
 

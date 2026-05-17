@@ -390,9 +390,10 @@ function setServerContextMenuItemHidden(actionName, isHidden) {
 
 function setMemberContextMenuItemHidden(actionName, isHidden) {
   if (!Array.isArray(memberContextMenuItems)) return
-  const target = memberContextMenuItems.find((item) => item.dataset.memberMenuAction === actionName)
-  if (!target) return
-  target.hidden = Boolean(isHidden)
+  const targets = memberContextMenuItems.filter((item) => item.dataset.memberMenuAction === actionName)
+  targets.forEach((target) => {
+    target.hidden = Boolean(isHidden)
+  })
 }
 
 function openServerContextMenu(serverId, x, y) {
@@ -908,7 +909,7 @@ function bindUiHandlers() {
           return
         }
         if (actionName === "mute") {
-          await handleMuteMember(username, 10)
+          await handleMuteMember(username, 10, "", { customDuration: true })
           return
         }
         if (actionName === "unmute") {

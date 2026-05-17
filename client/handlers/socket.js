@@ -17,6 +17,7 @@ import {
   messageMentionsUser,
   renderTypingIndicator,
   renderMessage,
+  maskMessagesFromLeftServerAuthor,
   resetMessageJumpState,
   scrollMessageListToBottom,
   syncChatJumpControls,
@@ -117,6 +118,15 @@ function bindSocketHandlers() {
   socket.on("message deleted", (payload) => {
     if (!payload) return
     deleteMessageFromView(payload.message_id)
+  })
+
+  socket.on("server author left", (payload) => {
+    if (!payload) return
+    const serverId = Number(payload.server_id)
+    const activeServer = getActiveServer()
+    const activeServerId = activeServer ? Number(activeServer.id) : 0
+    if (!Number.isInteger(serverId) || serverId <= 0 || serverId !== activeServerId) return
+    maskMessagesFromLeftServerAuthor(payload.username)
   })
 
   socket.on("drawguess state", (payload) => {

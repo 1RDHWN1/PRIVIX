@@ -2,6 +2,7 @@ export { focusInviteInput, setInvitePreview } from "./ui/invite.js"
 export { renderTypingIndicator } from "./ui/typing.js"
 export {
   renderMessage,
+  maskMessagesFromLeftServerAuthor,
   renderNoServerEmptyState,
   updateMessageReactions,
   deleteMessageFromView,
